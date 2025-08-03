@@ -7,8 +7,14 @@
 #include "notifications.h"
 #include "dns_manager.h"
 #include "ota_manager.h"
+#include "system_utils.h"
+#include "web_server.h"
 
 Preferences preferences;
+
+// Global variables for tracking heartbeat status
+unsigned long lastSuccessfulHeartbeat = 0;
+int lastHeartbeatResponseCode = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -90,11 +96,23 @@ void setup() {
   // Initialize modules
   initOTA();
   initTelnet();
+  initWebServer();
+  
+  // Check if a reboot was requested before last boot
+  if (checkRebootFlag()) {
+    telnetPrintf("[%10lu ms] [SYSTEM] Device rebooted successfully\r\n", millis());
+  }
 }
 
 void loop() {
   handleOTA();
   handleTelnet();
+  handleWebServer();
+  
+  // Check for reboot flag (set by web interface)
+  if (checkRebootFlag()) {
+    rebootDevice(3000, "Remote reboot request");
+  }
   
   unsigned long now = millis();
 
@@ -120,10 +138,16 @@ void loop() {
   http.setTimeout(10000);
   
   int httpCode = http.GET();
+  lastHeartbeatResponseCode = httpCode;
 
   if (httpCode > 0) {
     String payload = http.getString();
     telnetPrintf("[%10lu ms] [Heartbeat] Response (%d): %s\r\n", millis(), httpCode, payload.c_str());
+    
+    // Track successful heartbeat (200 OK)
+    if (httpCode == 200) {
+      lastSuccessfulHeartbeat = millis();
+    }
   } else {
     telnetPrintf("[%10lu ms] [Heartbeat] HTTP GET failed: %s\r\n", millis(), http.errorToString(httpCode).c_str());
     
