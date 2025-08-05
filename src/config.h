@@ -19,7 +19,6 @@ extern const char* deviceName;
 // DNS Configuration
 extern IPAddress primaryDNS;
 extern IPAddress fallbackDNS;
-extern IPAddress secondaryFallback;
 
 // Pushover Configuration
 extern const char* pushoverToken;

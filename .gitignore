@@ -57,6 +57,7 @@ credentials.h
 *.bak
 *.backup
 *.orig
+*.ps1.backup
 
 # Documentation build
 docs/_build/

@@ -2,7 +2,7 @@
 #include "credentials.h"
 
 // Firmware version - increment this with each update
-const char* firmwareVersion = "2.0.0";
+const char* firmwareVersion = "2.0.1";
 
 // WiFi Configuration (from credentials.h)
 const char* ssid = WIFI_SSID;
@@ -15,8 +15,7 @@ const char* deviceName = "poop-monitor";
 
 // DNS Configuration
 IPAddress primaryDNS(192, 168, 68, 51);    // Your custom DNS server
-IPAddress fallbackDNS(1, 1, 1, 1);         
-IPAddress secondaryFallback(8, 8, 4, 4);   // Google DNS secondary
+IPAddress fallbackDNS(192, 168, 68, 51);         
 
 // Pushover Configuration (from credentials.h)
 const char* pushoverToken = PUSHOVER_TOKEN;

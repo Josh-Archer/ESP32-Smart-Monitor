@@ -33,8 +33,8 @@ bool testDNSResolution() {
     Serial.printf("[%10lu ms] [DNS] DNS resolution failed with primary DNS (%s)\r\n", millis(), primaryDNS.toString().c_str());
     
     // Try switching to fallback DNS
-    Serial.printf("[%10lu ms] [DNS] Switching to fallback DNS (%s, %s)\r\n", millis(), fallbackDNS.toString().c_str(), secondaryFallback.toString().c_str());
-    WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), fallbackDNS, secondaryFallback);
+    Serial.printf("[%10lu ms] [DNS] Switching to fallback DNS (%s)\r\n", millis(), fallbackDNS.toString().c_str());
+    WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), fallbackDNS);
     
     delay(2000); // Give time for DNS change to take effect
     

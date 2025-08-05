@@ -56,7 +56,6 @@ void handleStatus() {
   // DNS server information
   json += "\"primary_dns\":\"" + primaryDNS.toString() + "\",";
   json += "\"fallback_dns\":\"" + fallbackDNS.toString() + "\",";
-  json += "\"secondary_fallback_dns\":\"" + secondaryFallback.toString() + "\",";
   
   // Current DNS servers in use
   json += "\"current_dns1\":\"" + WiFi.dnsIP(0).toString() + "\",";

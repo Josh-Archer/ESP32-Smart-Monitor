@@ -51,11 +51,65 @@ src/
 └── web_server.h/.cpp     # Web interface and API
 ```
 
-## Scripts
+## Development Scripts
 
-The project includes several utility scripts for easy device management:
+### PowerShell Scripts (Windows)
 
-### `monitor_esp32.sh` - Comprehensive Device Monitoring
+The project includes PowerShell scripts for Windows development workflow.
+
+#### Setup
+Load the scripts in your PowerShell session:
+```powershell
+. .\scripts\scripts.ps1
+```
+
+Or add to your PowerShell profile for auto-loading:
+```powershell
+# Add to $PROFILE (run `notepad $PROFILE`)
+if (Test-Path "C:\Code\Arduino\scripts\scripts.ps1") {
+    . "C:\Code\Arduino\scripts\scripts.ps1"
+}
+```
+
+#### Available PowerShell Commands
+
+**Build & Deploy:**
+- `pio-build` - Build firmware
+- `pio-upload-ota` - Upload via OTA to IP address
+- `pio-upload-ota-hostname` - Upload via OTA to hostname
+- `deploy-ota` - Complete workflow: build + upload + monitor
+- `deploy-ota -clean` - Clean build + upload + monitor
+
+**Monitoring:**
+- `telnet-monitor` - Connect to ESP32 telnet server
+- `pio-monitor` - Serial monitor via PlatformIO
+
+**Network:**
+- `ping-device` - Test connectivity to ESP32
+- `device-info` - Show device configuration
+
+**Git Workflow:**
+- `commit-version "2.0.1" "Fixed DNS issue"` - Commit with version tag
+- `git-status-clean` - Git status excluding build files
+
+**Quick Start:**
+```powershell
+# See all available commands
+pio-help
+
+# Build and deploy with monitoring
+deploy-ota
+
+# Just upload new firmware
+pio-upload-ota
+
+# Monitor telnet output
+telnet-monitor
+```
+
+### Bash Scripts (Linux/macOS)
+
+#### `monitor_esp32.sh` - Comprehensive Device Monitoring
 ```bash
 ./monitor_esp32.sh          # Full diagnostic check
 ./monitor_esp32.sh --telnet # Connect directly to telnet
@@ -72,7 +126,7 @@ The project includes several utility scripts for easy device management:
 - Colored output with timestamps for better readability
 - Connection command suggestions for easy access
 
-### `reboot_esp32.sh` - Remote Device Reboot
+#### `reboot_esp32.sh` - Remote Device Reboot
 ```bash
 ./reboot_esp32.sh           # Interactive reboot with confirmation
 ./reboot_esp32.sh --force   # Force reboot without confirmation
@@ -86,7 +140,7 @@ The project includes several utility scripts for easy device management:
 - **Enhanced status reporting** with uptime and version information
 - Comprehensive error handling and user feedback
 
-### `upload_and_monitor.sh` - All-in-One Deployment
+#### `upload_and_monitor.sh` - All-in-One Deployment
 ```bash
 ./upload_and_monitor.sh     # Build, upload, and monitor in one command
 ```

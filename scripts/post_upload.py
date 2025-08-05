@@ -26,26 +26,52 @@ def post_upload_action(source, target, env):
     time.sleep(8)
     
     # Run monitoring script
-    monitor_script = Path(project_dir) / "monitor_esp32.sh"
-    
-    if monitor_script.exists():
-        print("Running device monitoring script...")
-        try:
-            result = subprocess.run(
-                [str(monitor_script)],
-                cwd=project_dir,
-                timeout=60
-            )
-            if result.returncode == 0:
-                print("✓ Monitoring completed successfully")
-            else:
-                print(f"⚠ Monitoring script exited with code {result.returncode}")
-        except subprocess.TimeoutExpired:
-            print("⚠ Monitoring script timed out")
-        except Exception as e:
-            print(f"⚠ Error running monitoring script: {e}")
+    # Check if we're on Windows and use PowerShell, otherwise use bash
+    if os.name == 'nt':  # Windows
+        # Use dedicated PowerShell monitoring script
+        ps_monitor = Path(project_dir) / "scripts" / "post_upload_monitor.ps1"
+        if ps_monitor.exists():
+            print("Running Windows PowerShell monitoring...")
+            try:
+                result = subprocess.run(
+                    ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", str(ps_monitor)],
+                    cwd=project_dir,
+                    timeout=45
+                )
+                if result.returncode == 0:
+                    print("✓ Post-upload monitoring completed")
+                else:
+                    print(f"⚠ Monitoring completed with code {result.returncode}")
+            except subprocess.TimeoutExpired:
+                print("⚠ Monitoring timed out")
+            except Exception as e:
+                print(f"⚠ Error running monitoring: {e}")
+        else:
+            print("⚠ PowerShell monitoring script not found")
+            print("💡 Manual steps:")
+            print("   . .\\scripts\\scripts.ps1")
+            print("   telnet-monitor")
     else:
-        print("⚠ Monitoring script not found, skipping...")
+        # Unix/Linux - use bash script
+        monitor_script = Path(project_dir) / "monitor_esp32.sh"
+        if monitor_script.exists():
+            print("Running device monitoring script...")
+            try:
+                result = subprocess.run(
+                    [str(monitor_script)],
+                    cwd=project_dir,
+                    timeout=60
+                )
+                if result.returncode == 0:
+                    print("✓ Monitoring completed successfully")
+                else:
+                    print(f"⚠ Monitoring script exited with code {result.returncode}")
+            except subprocess.TimeoutExpired:
+                print("⚠ Monitoring script timed out")
+            except Exception as e:
+                print(f"⚠ Error running monitoring script: {e}")
+        else:
+            print("⚠ Monitoring script not found, skipping...")
     
     print("\n" + "="*60)
     print("           POST-UPLOAD COMPLETE")
