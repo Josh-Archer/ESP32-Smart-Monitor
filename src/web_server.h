@@ -11,4 +11,12 @@ void initWebServer();
 // Handle web server requests
 void handleWebServer();
 
+// Handler functions for web interface
+void handleRoot();
+void handleReboot();
+void handleStatus();
+void handleAlertPause();
+void handleAlertResume();
+void handleNotFound();
+
 #endif
