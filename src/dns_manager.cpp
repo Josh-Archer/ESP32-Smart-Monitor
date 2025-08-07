@@ -10,10 +10,12 @@ unsigned long dnsFirstFailureTime = 0;     // Track when DNS first failed
 unsigned long lastDnsAlertTime = 0;        // Track when we last sent an alert
 bool alertsPaused = false;                  // Manual alert pause control
 unsigned long alertsPausedUntil = 0;       // Timestamp when paused alerts expire
+unsigned long dnsRecoveryTime = 0;         // Track when DNS recovery started
 
 // Constants for DNS alert timing (5 minutes and 30 minutes)
 const unsigned long DNS_FAILURE_THRESHOLD_MS = 5 * 60 * 1000;   // 5 minutes before first alert
 const unsigned long DNS_ALERT_INTERVAL_MS = 30 * 60 * 1000;     // 30 minutes between alerts
+const unsigned long DNS_RECOVERY_THRESHOLD_MS = 5 * 60 * 1000;  // 5 minutes before recovery alert
 
 // Test DNS server connectivity using a reliable external service
 bool testDNSServerConnectivity(const char* testUrl) {
@@ -34,16 +36,44 @@ void handleSuccessfulDNSResolution() {
   Serial.printf("[%10lu ms] [DNS] DNS resolution working (Primary: %s)\r\n", millis(), primaryDNS.toString().c_str());
   
   if (dnsFailureReported) {
-    // DNS is working again, send recovery notification
-    String recoveryMessage = "DNS server " + primaryDNS.toString() + " is working again on " + String(deviceName);
-    sendPushoverAlert("DNS Recovered", recoveryMessage.c_str(), 0);
-    resetDNSFailureTracking();
+    unsigned long currentTime = millis();
     
-    // Auto-resume alerts on recovery
-    if (areAlertsPaused()) {
-      resumeAlerts();
-      Serial.printf("[%10lu ms] [DNS] Auto-resumed alerts due to DNS recovery\r\n", millis());
+    // Start tracking recovery time if not already tracking
+    if (dnsRecoveryTime == 0) {
+      dnsRecoveryTime = currentTime;
+      Serial.printf("[%10lu ms] [DNS] Started tracking DNS recovery\r\n", currentTime);
     }
+    
+    // Check if DNS has been stable for the threshold time before sending recovery alert
+    unsigned long timeSinceRecovery = currentTime - dnsRecoveryTime;
+    if (timeSinceRecovery >= DNS_RECOVERY_THRESHOLD_MS) {
+      // DNS has been stable for 5+ minutes, send recovery notification
+      if (!areAlertsPaused()) {
+        String recoveryMessage = "DNS server " + primaryDNS.toString() + " has been stable for " + 
+                                String(timeSinceRecovery / 60000) + " minutes on " + String(deviceName);
+        sendPushoverAlert("DNS Recovered", recoveryMessage.c_str(), 0);
+        Serial.printf("[%10lu ms] [DNS] Recovery alert sent - DNS stable for %lu minutes\r\n", 
+                      currentTime, timeSinceRecovery / 60000);
+      } else {
+        Serial.printf("[%10lu ms] [DNS] Recovery alert suppressed - alerts are paused\r\n", currentTime);
+      }
+      
+      resetDNSFailureTracking();
+      
+      // Auto-resume alerts on confirmed recovery
+      if (areAlertsPaused()) {
+        resumeAlerts();
+        Serial.printf("[%10lu ms] [DNS] Auto-resumed alerts due to confirmed DNS recovery\r\n", currentTime);
+      }
+    } else {
+      // DNS is working but hasn't been stable long enough yet
+      unsigned long minutesUntilAlert = (DNS_RECOVERY_THRESHOLD_MS - timeSinceRecovery) / 60000;
+      Serial.printf("[%10lu ms] [DNS] DNS working for %lu minutes, recovery alert in %lu minutes\r\n", 
+                    currentTime, timeSinceRecovery / 60000, minutesUntilAlert);
+    }
+  } else {
+    // DNS was never reported as failed, reset recovery tracking
+    dnsRecoveryTime = 0;
   }
 }
 
@@ -52,6 +82,7 @@ void resetDNSFailureTracking() {
   dnsFailureReported = false;
   dnsFirstFailureTime = 0;
   lastDnsAlertTime = 0;
+  dnsRecoveryTime = 0;
 }
 
 // Alert pause control functions

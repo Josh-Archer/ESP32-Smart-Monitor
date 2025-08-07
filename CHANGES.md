@@ -1,5 +1,17 @@
 # Recent Changes Summary
 
+## Smart Recovery Alerts (v2.1.2)
+
+Fixed DNS recovery alerts to follow the same 5-minute threshold timing as failure alerts. Recovery notifications now only trigger after DNS has been stable for 5+ minutes, preventing premature recovery alerts during intermittent connectivity issues.
+
+**Changes**:
+
+- Added `DNS_RECOVERY_THRESHOLD_MS` constant (5 minutes)
+- Recovery alerts now wait for 5 minutes of stable DNS before notifying
+- Added recovery time tracking with `dnsRecoveryTime` variable
+- Recovery alerts respect alert pause settings
+- Enhanced logging shows countdown to recovery alert
+
 ## Fix Icon Render (v2.1.1)
 
 Notification HTML Icon wasn't rendering. Switched to HTML entity codes vs emojii.
