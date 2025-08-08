@@ -1,5 +1,117 @@
 # Recent Changes Summary
 
+## Progressive Web App & Bootstrap Interface (v2.3.0)
+
+Complete modernization with Bootstrap CSS framework, live telnet console streaming, and full Progressive Web App (PWA) implementation enabling app-like experience with offline functionality.
+
+**Bootstrap Web Interface**:
+
+- **Replaced custom CSS with Bootstrap 5.3.0** for professional design
+- Responsive card-based layout with icons from Bootstrap Icons
+- Modern navbar with connection status indicator
+- Toast notifications for user feedback
+- Modal dialogs for confirmations
+- Mobile-first responsive design
+
+**Live Console Feature**:
+
+- **Real-time telnet log streaming** to web interface
+- Console window with syntax highlighting
+- Auto-scroll functionality with toggle control
+- Log level detection (error, warning, info, success)
+- Terminal-style console display with scrollbars
+- Clear console and manual scroll controls
+
+**Progressive Web App (PWA) Features**:
+
+- **Progressive Web App manifest** with app metadata and icons
+- **Service Worker implementation** for offline functionality and caching
+- **App installation** - Install as native app on mobile/desktop
+- **Offline support** - Cached interface and data when device unreachable
+- **App shortcuts** - Quick access to status and reboot functions
+- **Background sync** - Ready for future push notification features
+
+**Enhanced Offline Experience**:
+
+- **Smart caching strategy** - Static files cached for offline use
+- **Offline page** with beautiful design and retry functionality
+- **Cached device status** - Show last known data when offline
+- **Auto-reconnection** - Automatic retry when connection restored
+- **Connection indicators** - Visual feedback for online/offline state
+
+**Installation & App Features**:
+
+- **One-click install** - "Install App" button appears on compatible browsers
+- **Standalone mode** - Runs like a native app without browser chrome
+- **App shortcuts** - Access device status and reboot directly from launcher
+- **Theme integration** - Matches Bootstrap design with proper branding
+- **Mobile optimized** - Perfect mobile app experience
+
+**File Structure Improvements**:
+
+- `/data/index.html` - Bootstrap-based main interface with PWA support
+- `/data/style.css` - Custom CSS for console and enhancements
+- `/data/app.js` - Comprehensive JavaScript application class with PWA functionality
+- `/data/manifest.json` - PWA app manifest for installation
+- `/data/sw.js` - Service Worker for offline functionality
+- `/data/offline.html` - Beautiful offline fallback page
+- Static file serving for all assets via dedicated routes
+
+**Technical Enhancements**:
+
+- Telnet log buffer system for web streaming
+- JSON escaping for safe log transmission
+- Connection status monitoring with visual indicators
+- Advanced error handling and user experience improvements
+- Keyboard shortcuts (Ctrl+R refresh, Ctrl+` toggle console)
+- Service Worker with intelligent caching strategies
+- PWA manifest with proper metadata and icon definitions
+- LocalStorage integration for offline data persistence
+- Background sync preparation for future features
+- Enhanced error handling for offline scenarios
+
+---
+
+## Static Web Interface & Memory Optimization (v2.2.0)
+
+Major refactoring to move HTML/CSS/JavaScript to static files, dramatically reducing flash memory usage and improving web interface performance.
+
+**Memory Optimization Results**:
+
+- **Flash usage reduced from 76.6% to 52.9%** (23.7% reduction!)
+- Modern JavaScript-based interface with auto-refresh
+- Responsive design with improved visual styling
+- SPIFFS filesystem integration for static file serving
+
+**Web Interface Improvements**:
+
+- Separated HTML/CSS/JavaScript into `/data/index.html` and `/data/reboot.html`
+- Dynamic content loading via JavaScript fetch API
+- Auto-refresh every 30 seconds for live status updates
+- Improved visual design with grid layout and better typography
+- Real-time WiFi signal strength display
+- Enhanced error handling and user feedback
+- Mobile-responsive design
+
+**Technical Changes**:
+
+- Added SPIFFS filesystem support in `platformio.ini`
+- Modified web server to serve static files from SPIFFS
+- Simplified C++ handlers to minimal JSON API responses
+- Reduced string literals in firmware code significantly
+- Enhanced status endpoint with formatted uptime display
+
+**Files Added**:
+
+- `data/index.html` - Main control panel interface
+- `data/reboot.html` - Reboot confirmation page
+
+**Code Changes**:
+
+- Updated `src/web_server.cpp` to use SPIFFS file serving
+- Modified `platformio.ini` to include SPIFFS partition configuration
+- Version bumped to 2.2.0
+
 ## Smart Recovery Alerts (v2.1.2)
 
 Fixed DNS recovery alerts to follow the same 5-minute threshold timing as failure alerts. Recovery notifications now only trigger after DNS has been stable for 5+ minutes, preventing premature recovery alerts during intermittent connectivity issues.

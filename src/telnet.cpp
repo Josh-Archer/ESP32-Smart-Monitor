@@ -1,5 +1,7 @@
 #include "telnet.h"
+#include <time.h>
 #include "config.h"
+#include "web_server.h" // For addToTelnetLogBuffer
 #include <stdarg.h>
 
 // Telnet server for remote serial monitoring
@@ -32,11 +34,28 @@ void telnetPrintf(const char* format, ...) {
   vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
   
+  // Get local time (timezone set by configTzTime in setup)
+  time_t now;
+  time(&now);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+  char ts[20];
+  strftime(ts, sizeof(ts), "%H:%M:%S", &timeinfo);
+  // Prepend timestamp
+  char finalBuf[600];
+  snprintf(finalBuf, sizeof(finalBuf), "[%s] %s", ts, buffer);
   // Print to serial
-  Serial.print(buffer);
+  Serial.print(finalBuf);
   
   // Print to telnet client if connected
   if (telnetClient && telnetClient.connected()) {
-    telnetClient.print(buffer);
+    telnetClient.print(finalBuf);
+  }
+  
+  // Add to web log buffer for streaming (remove trailing \r\n for cleaner web display)
+  String logEntry = String(buffer);
+  logEntry.trim(); // Remove trailing whitespace
+  if (logEntry.length() > 0) {
+    addToTelnetLogBuffer(logEntry);
   }
 }

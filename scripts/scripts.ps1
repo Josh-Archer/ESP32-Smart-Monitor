@@ -51,11 +51,16 @@ function telnet-monitor {
         $reader = New-Object System.IO.StreamReader($stream)
         
         Write-Host "Connected! Monitoring output..." -ForegroundColor Green
+        # Prepare Eastern Time zone for timestamps
+        $estZone = [System.TimeZoneInfo]::FindSystemTimeZoneById('Eastern Standard Time')
         
         while ($client.Connected) {
             if ($stream.DataAvailable) {
                 $line = $reader.ReadLine()
-                Write-Host "$(Get-Date -Format 'HH:mm:ss'): $line" -ForegroundColor Cyan
+                # Convert current time to Eastern Time for logging
+                $estNow = [System.TimeZoneInfo]::ConvertTime((Get-Date), $estZone)
+                $timestamp = $estNow.ToString('HH:mm:ss')
+                Write-Host "[$timestamp]: $line" -ForegroundColor Cyan
             }
             Start-Sleep -Milliseconds 100
         }
@@ -101,6 +106,26 @@ function device-info {
     Write-Host "Status API: http://$DEVICE_HOSTNAME/status" -ForegroundColor White
 }
 
+function open-device-ui {
+    Write-Host "Opening device UI in default browser..." -ForegroundColor Green
+    Start-Process "http://$DEVICE_HOSTNAME/"
+}
+
+# Docker/K8s utilities
+function web-deploy {
+    param(
+        [string]$Tag = "latest",
+        [string]$Image = "jarcher1200/poop-monitor",
+        [string]$Namespace
+    )
+    $script = Join-Path $PSScriptRoot 'deploy_web.ps1'
+    $args = @('-ExecutionPolicy','Bypass','-File', $script, '-Tag', $Tag, '-Image', $Image)
+    if ($PSBoundParameters.ContainsKey('Namespace') -and $Namespace) {
+        $args += @('-Namespace', $Namespace)
+    }
+    & powershell.exe @args
+}
+
 # Git utilities
 function git-status-clean {
     Write-Host "Git status (ignoring build artifacts):" -ForegroundColor Green
@@ -139,12 +164,14 @@ function deploy-ota {
     if ($LASTEXITCODE -eq 0) {
         pio-upload-ota
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "Deployment successful! Connecting to telnet..." -ForegroundColor Green
+            Write-Host "OTA successful." -ForegroundColor Green
+            # Then connect to telnet
+            Write-Host "Connecting to telnet..." -ForegroundColor Green
             Start-Sleep -Seconds 3
             telnet-monitor
-        }
-    }
-}
+         }
+     }
+ }
 
 # Help function
 function pio-help {
@@ -166,6 +193,11 @@ function pio-help {
     Write-Host "Network Commands:" -ForegroundColor Yellow
     Write-Host "  ping-device             Test device connectivity"
     Write-Host "  device-info             Show device information"
+    Write-Host "  open-device-ui          Open device web interface"
+    Write-Host ""
+    Write-Host "Docker/K8s:" -ForegroundColor Yellow
+    Write-Host "  web-deploy [-Tag latest] [-Image jarcher1200/poop-monitor] [-Namespace ns]" 
+    Write-Host "                             Build+push image and restart esp32-panel"
     Write-Host ""
     Write-Host "Git Commands:" -ForegroundColor Yellow
     Write-Host "  git-status-clean        Git status (no build files)"

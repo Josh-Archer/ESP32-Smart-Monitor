@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <time.h>
+#include <sys/time.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
@@ -130,8 +132,6 @@ void loop() {
   }
   heartbeatCount++;
 
-  telnetPrintf("[%10lu ms] [Heartbeat] Pinging %s...\r\n", now, apiEndpoint);
-
   WiFiClient client;
   HTTPClient http;
   http.begin(client, apiEndpoint);
@@ -142,14 +142,14 @@ void loop() {
 
   if (httpCode > 0) {
     String payload = http.getString();
-    telnetPrintf("[%10lu ms] [Heartbeat] Response (%d): %s\r\n", millis(), httpCode, payload.c_str());
+    telnetPrintf("[%10lu ms] [Heartbeat] Ping Response (%d): %s\r\n", millis(), httpCode, payload.c_str());
     
     // Track successful heartbeat (200 OK)
     if (httpCode == 200) {
       lastSuccessfulHeartbeat = millis();
     }
   } else {
-    telnetPrintf("[%10lu ms] [Heartbeat] HTTP GET failed: %s\r\n", millis(), http.errorToString(httpCode).c_str());
+    telnetPrintf("[%10lu ms] [Heartbeat] Ping failed: %s\r\n", millis(), http.errorToString(httpCode).c_str());
     
     // If heartbeat fails, test DNS resolution
     if (httpCode == HTTPC_ERROR_CONNECTION_REFUSED || httpCode == -1) {

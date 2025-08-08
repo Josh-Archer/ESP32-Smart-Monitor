@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - ESP32 Control Panel</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <style>
+        .offline-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .offline-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        .offline-icon {
+            font-size: 4rem;
+            color: #6c757d;
+            margin-bottom: 1rem;
+        }
+        .retry-btn {
+            min-width: 120px;
+        }
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-6 col-lg-4">
+                    <div class="card offline-card">
+                        <div class="card-body text-center p-5">
+                            <i class="bi bi-wifi-off offline-icon pulse"></i>
+                            <h3 class="card-title mb-3">You're Offline</h3>
+                            <p class="card-text text-muted mb-4">
+                                Can't connect to your ESP32 device right now. 
+                                Check your connection and try again.
+                            </p>
+                            
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-primary retry-btn" onclick="retryConnection()">
+                                    <i class="bi bi-arrow-clockwise"></i> Retry Connection
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="viewCached()">
+                                    <i class="bi bi-archive"></i> View Cached Data
+                                </button>
+                            </div>
+                            
+                            <hr class="my-4">
+                            
+                            <div class="text-muted small">
+                                <p class="mb-2">
+                                    <i class="bi bi-info-circle"></i> 
+                                    This app works offline with cached data
+                                </p>
+                                <p class="mb-0">
+                                    <strong>Last connected:</strong> 
+                                    <span id="last-connected">Unknown</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Update last connected time from localStorage
+        const lastConnected = localStorage.getItem('esp32-last-connected');
+        if (lastConnected) {
+            const date = new Date(parseInt(lastConnected));
+            document.getElementById('last-connected').textContent = date.toLocaleString();
+        }
+        
+        function retryConnection() {
+            const btn = document.querySelector('.retry-btn');
+            const originalText = btn.innerHTML;
+            
+            btn.innerHTML = '<i class="bi bi-arrow-clockwise spinner-border spinner-border-sm"></i> Connecting...';
+            btn.disabled = true;
+            
+            // Try to navigate back to main page
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 1000);
+        }
+        
+        function viewCached() {
+            // Try to show cached data from localStorage
+            const cachedStatus = localStorage.getItem('esp32-device-status');
+            if (cachedStatus) {
+                try {
+                    const status = JSON.parse(cachedStatus);
+                    alert(`Cached Device Info:\n\nDevice: ${status.device}\nVersion: ${status.version}\nIP: ${status.ip}\nLast Update: ${new Date(status.timestamp).toLocaleString()}`);
+                } catch (e) {
+                    alert('No cached data available');
+                }
+            } else {
+                alert('No cached data available');
+            }
+        }
+        
+        // Auto-retry connection every 30 seconds
+        setInterval(() => {
+            fetch('/', { method: 'HEAD', cache: 'no-cache' })
+                .then(() => {
+                    window.location.href = '/';
+                })
+                .catch(() => {
+                    console.log('Still offline...');
+                });
+        }, 30000);
+    </script>
+</body>
+</html>

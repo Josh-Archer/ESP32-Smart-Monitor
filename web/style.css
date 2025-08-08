@@ -1,0 +1,212 @@
+/* Custom styles for ESP32 Control Panel */
+
+/* Console Log Styles */
+.console-log {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    height: 400px;
+    overflow-y: auto;
+    padding: 15px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    border: 1px solid #444;
+}
+
+.console-log::-webkit-scrollbar {
+    width: 8px;
+}
+
+.console-log::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.console-log::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.console-log::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+/* Console log message types */
+.log-entry {
+    margin-bottom: 2px;
+    line-height: 1.4;
+}
+
+.log-error {
+    color: #f85149;
+}
+
+.log-warning {
+    color: #f0883e;
+}
+
+.log-info {
+    color: #58a6ff;
+}
+
+.log-success {
+    color: #56d364;
+}
+
+.log-timestamp {
+    color: #8b949e;
+    opacity: 0.8;
+}
+
+/* Status indicator animations */
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* Card hover effects */
+.card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Button loading states */
+.btn-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .container {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+    
+    .console-log {
+        height: 300px;
+        font-size: 11px;
+    }
+}
+
+/* Alert status indicators */
+.alert-enabled {
+    background: linear-gradient(45deg, #d4edda, #c3e6cb);
+    border-left: 4px solid #28a745;
+}
+
+.alert-paused {
+    background: linear-gradient(45deg, #fff3cd, #ffeaa7);
+    border-left: 4px solid #ffc107;
+}
+
+/* Toast notifications custom styling */
+.toast {
+    min-width: 300px;
+}
+
+.toast-success {
+    background-color: #d4edda;
+    color: #155724;
+    border-color: #c3e6cb;
+}
+
+.toast-error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border-color: #f5c6cb;
+}
+
+.toast-warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border-color: #ffeaa7;
+}
+
+/* Connection status indicator */
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.connection-status.offline {
+    color: #dc3545 !important;
+}
+
+.connection-status.online {
+    color: #28a745 !important;
+}
+
+/* Progress bars for system stats */
+.progress {
+    height: 6px;
+}
+
+.progress-memory {
+    background-color: #e9ecef;
+}
+
+.progress-bar-memory {
+    background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+}
+
+/* WiFi signal strength colors */
+.wifi-excellent { color: #28a745 !important; }
+.wifi-good { color: #17a2b8 !important; }
+.wifi-fair { color: #ffc107 !important; }
+.wifi-poor { color: #dc3545 !important; }
+
+/* Smooth transitions */
+* {
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+/* Dark mode support (future enhancement) */
+@media (prefers-color-scheme: dark) {
+    .card {
+        background-color: #2d3748;
+        border-color: #4a5568;
+    }
+    
+    .card-body {
+        color: #e2e8f0;
+    }
+    
+    .text-muted {
+        color: #a0aec0 !important;
+    }
+}

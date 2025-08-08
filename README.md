@@ -1,20 +1,32 @@
+
 # ESP32 Poop Monitor
 
-An ESP32-based monitoring device that sends heartbeat requests and provides remote telnet access, web interface, and comprehensive monitoring tools with automated deployment and management scripts.
+An ESP32-based monitoring device with a **modern web interface** (served via Docker/Kubernetes), live console streaming, smart DNS monitoring, and comprehensive automation tools.
+
+## What's New (v2.4+)
+
+- Web UI is now fully decoupled from firmware; all static file serving (SPIFFS) removed from device
+- Frontend always communicates with the ESP32 device via mDNS (`http://poop-monitor.local`)
+- Added cache-bust button to the web UI for instant updates
+- Improved nginx config for SPA fallback and cache control
+- Automated Docker build and Kubernetes deployment scripts (`deploy_web.ps1`, `deploy_web.sh`)
+- Deployment uses `latest` image tag with `imagePullPolicy: Always` for reliable updates
+- Enhanced DNS monitoring, telnet, and OTA workflow scripts
+- General code cleanup and documentation improvements
 
 ## Features
 
 - 📡 WiFi connectivity with custom DNS configuration and fallback
 - 🔄 OTA (Over-The-Air) firmware updates with automatic monitoring
-- 📱 **Smart DNS alerting** with configurable timing (5min delay, 30min intervals)
-- 🖥️ Telnet server for real-time debugging and monitoring
-- 🌐 Web interface with remote reboot capability and JSON API
+- 🖥️ **Live telnet console streaming** to web interface with syntax highlighting
+- 🌐 **Modern web interface** (served via Docker/Kubernetes/nginx) with responsive design and real-time updates
 - 🔍 **Intelligent DNS monitoring** with primary/fallback server testing and duplicate detection
-- 💾 Persistent version tracking and configuration
-- 📊 **Enhanced status monitoring** with formatted timestamps and uptime
-- 🔧 **Comprehensive automation scripts** for deployment and management
+- 📊 **Enhanced status monitoring** with formatted timestamps and WiFi signal strength
+- 🔧 **Comprehensive automation scripts** for deployment and management (PowerShell & Bash)
 - ⏱️ **Smart post-upload monitoring** with automatic device detection
-- 🛠️ **Centralized utilities** with improved code organization and readability
+- �️ **Cache-bust button** for instant web UI updates
+- 🚀 **One-command Docker/K8s deploy** with reliable image update
+- 🔒 **Smart DNS alerting** with configurable timing (5min delay, 30min intervals)
 
 ## Security Setup
 
@@ -24,11 +36,10 @@ An ESP32-based monitoring device that sends heartbeat requests and provides remo
 
 1. Copy the credentials template:
 
-   ```bash
-   cp src/credentials.template.cpp src/credentials.cpp
-   ```
+   `cp src/credentials.template.cpp src/credentials.cpp`
 
 2. Edit `src/credentials.cpp` with your actual values:
+
    - WiFi SSID and password
    - OTA update password
    - Pushover app token and user key
@@ -37,7 +48,6 @@ An ESP32-based monitoring device that sends heartbeat requests and provides remo
 
 ### File Structure
 
-```
 src/
 ├── main.cpp              # Main program
 ├── config.h/.cpp         # Non-sensitive configuration
@@ -49,8 +59,7 @@ src/
 ├── dns_manager.h/.cpp    # DNS testing
 ├── ota_manager.h/.cpp    # OTA updates
 ├── system_utils.h/.cpp   # System utilities (reboot, etc.)
-└── web_server.h/.cpp     # Web interface and API
-```
+└── web_server.h/.cpp     # Web API
 
 ## Smart DNS Monitoring
 
@@ -245,28 +254,46 @@ pio run --target upload
 
 ### Web Interface
 
-The ESP32 provides a web interface accessible at:
+The ESP32 provides a modern Bootstrap-based web interface accessible at:
 
 - `http://poop-monitor.local/` - Main control panel with alert controls
 - `http://poop-monitor.local/status` - JSON status API
 - `http://poop-monitor.local/reboot` - Remote reboot
 
-**Control Panel Features:**
+**Modern Interface Features (v2.3.0):**
 
-- Real-time device information display
-- **Alert status and control** - pause/resume DNS failure notifications
-- **Flexible pause options** - 30min, 1hr, 3hr, or indefinite pause
-- **One-click remote reboot** with safety confirmation
-- **Live system metrics** (uptime, memory, connectivity status)
-- Auto-resume alerts when DNS recovers
+- **Bootstrap 5.3.0 framework** with professional responsive design
+- **Real-time status cards** - version, IP, uptime, WiFi signal strength
+- **Interactive dashboard** with auto-refresh every 30 seconds
+- **Toast notifications** for user feedback and confirmations
+- **Live telnet console** with syntax highlighting and auto-scroll
+- **Mobile-responsive** design for smartphone access
+- **Connection status indicator** with real-time monitoring
 
-**Alert Control Endpoints:**
+**Live Console Features:**
 
-- `/alerts/pause/30` - Pause alerts for 30 minutes
-- `/alerts/pause/60` - Pause alerts for 1 hour
-- `/alerts/pause/180` - Pause alerts for 3 hours
-- `/alerts/pause/indefinite` - Pause alerts indefinitely
-- `/alerts/resume` - Resume alerts manually
+- **Toggle console window** with real-time telnet log streaming
+- **Syntax highlighting** for log levels (error, warning, info, success)
+- **Auto-scroll toggle** with manual scroll control
+- **Clear console** functionality
+- **Terminal styling** with dark theme and scrollbars
+- **Keyboard shortcuts** (Ctrl+R refresh, Ctrl+` toggle console)
+
+**Alert Control Panel:**
+
+- **Visual alert status** with color-coded indicators
+- **One-click pause controls** - 30min, 1hr, 3hr, or indefinite
+- **Smart resume functionality** with confirmation dialogs
+- **Time remaining display** for paused alerts
+- **Auto-resume on DNS recovery**
+
+**Technical Implementation:**
+
+- **SPIFFS filesystem** serving static files (HTML/CSS/JS)
+- **Bootstrap Icons** for professional iconography
+- **JavaScript fetch API** for dynamic content loading
+- **JSON REST endpoints** for all device interactions
+- **Memory optimized** - 23.7% flash reduction vs embedded HTML
 
 ### Telnet Console
 
@@ -300,16 +327,27 @@ curl http://poop-monitor.local/status | python3 -m json.tool
 
 1. **Setup credentials**: `cp src/credentials.template.cpp src/credentials.cpp`
 2. **Edit credentials**: Add your WiFi, OTA, and Pushover details
-3. **Build and upload with monitoring**: `./upload_and_monitor.sh`
-   - *Or use standard PlatformIO*: `platformio run --target upload` (auto-monitors)
-4. **Access web interface**: `http://poop-monitor.local/`
+3. **Build and upload firmware**: `pio-upload-ota` (or `./upload_and_monitor.sh`)
+4. **Upload web interface**: `pio-upload-spiffs` (deploys Bootstrap files)
+5. **Access web interface**: `http://poop-monitor.local/`
 
 ### Development Workflow
 
-- **Rapid deployment**: `./upload_and_monitor.sh` (builds, uploads, monitors with smart detection)
-- **Status monitoring**: `./monitor_esp32.sh` (comprehensive diagnostics with formatted metrics)
-- **Remote management**: `./reboot_esp32.sh` (safe remote reboot with verification)
-- **Quick access**: Use `--telnet` or `--web` flags for direct connections
+- **Firmware deployment**: `pio-upload-ota` (builds and uploads firmware via OTA)
+- **Web interface deployment**: `pio-upload-spiffs` (uploads HTML/CSS/JS files)
+- **Combined deployment**: `./upload_and_monitor.sh` (builds, uploads, monitors)
+- **Status monitoring**: `./monitor_esp32.sh` (comprehensive diagnostics)
+- **Remote management**: `./reboot_esp32.sh` (safe remote reboot)
+- **Direct access**: Use `--telnet` or `--web` flags for quick connections
+
+### File Structure for Web Interface
+
+```text
+data/
+├── index.html      # Bootstrap main interface
+├── style.css       # Custom CSS for console & enhancements  
+└── app.js          # JavaScript application with live features
+```
 
 ### PlatformIO Shortcuts
 
@@ -347,46 +385,6 @@ curl http://poop-monitor.local/status | python3 -m json.tool
 - Use `./upload_and_monitor.sh` for **complete build-to-monitoring workflow**
 - **Smart device detection** automatically waits for initialization
 - **Post-upload verification** ensures successful deployment
-
-## Recent Updates & Code Improvements
-
-### Version 2.1.0 - Smart DNS Monitoring & Code Readability
-
-- **🕐 Smart DNS alerting**: 5-minute delay before first alert, 30-minute intervals for subsequent alerts
-- **🔍 Duplicate server detection**: Skips critical alerts when primary/fallback DNS are identical
-- **🔕 Manual alert control**: Web-based pause/resume with flexible timing options (30min, 1hr, 3hr, indefinite)
-- **🔄 Auto-resume on recovery**: Alerts automatically resume when DNS recovers
-- **🏗️ Improved code organization**: Descriptive function names and better separation of concerns
-- **📝 Enhanced documentation**: Detailed DNS monitoring section and updated feature descriptions
-- **🔧 Better constants naming**: Clear `_MS` suffix for millisecond values and descriptive variable names
-
-### Version 1.4.0 - Enhanced Automation & Code Optimization
-
-- **🔧 Reduced code duplication**: Created centralized `formatUptime()` utility function
-- **📊 Enhanced status endpoint**: Improved JSON API with formatted timestamps  
-- **🎯 Streamlined monitoring**: Eliminated duplicate JSON parsing in scripts
-- **⚡ Smart device detection**: Enhanced post-upload monitoring with automatic ping verification
-- **🛠️ Better error handling**: Improved resilience and user feedback across all scripts
-- **📋 Comprehensive documentation**: Updated README with detailed feature descriptions
-
-### Technical Improvements
-
-- **Smart DNS timing logic** prevents notification spam while ensuring important alerts
-- **Modular function design** with clear responsibility separation
-- **Centralized uptime formatting** in `system_utils.cpp` eliminates duplicate code
-- **Shared JSON parsing function** in monitoring scripts reduces redundancy
-- **Enhanced status API** provides formatted timestamps and human-readable uptime
-- **Optimized script workflow** with better error handling and user guidance
-
-## Version History
-
-- **v2.1.0**: Smart DNS alerting with 5-minute delay and 30-minute intervals, improved code readability with descriptive function names, duplicate DNS server detection
-- **v1.4.0**: Enhanced automation, code optimization, improved monitoring with formatted timestamps
-- **v1.3.0**: Added web interface, remote reboot, comprehensive monitoring scripts
-- **v1.2.0**: Modular code structure with security improvements  
-- v1.1.1: Added Pushover credentials
-- v1.1.0: Added telnet server functionality
-- v1.0.1: Initial version with basic monitoring
 
 ## Security Notes
 

@@ -1,0 +1,3 @@
+- Rollback on failure 
+- Usage bars for memory/cpu/flash
+- upload alert and finish alert
