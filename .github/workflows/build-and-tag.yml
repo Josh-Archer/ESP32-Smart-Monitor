@@ -2,7 +2,7 @@ name: ESP32 Firmware Build and Tag
 on:
   push:
     branches:
-      - '**'
+      - 'main'
     tags: []
   pull_request:
   workflow_dispatch:
@@ -51,22 +51,23 @@ jobs:
           echo "ram=$RAM" >> $GITHUB_OUTPUT
           echo "flash=$FLASH" >> $GITHUB_OUTPUT
       - name: Find pull request
+        if: github.event_name == 'pull_request'
         id: pr
         uses: jwalton/gh-find-current-pr@v1
       - name: Find existing comment
-        if: steps.pr.outputs.number != ''
+        if: github.event_name == 'pull_request'
         id: find-comment
         uses: peter-evans/find-comment@v3
         with:
-          issue-number: ${{ steps.pr.outputs.number }}
+          issue-number: ${{ github.event.number }}
           comment-author: 'github-actions[bot]'
           body-includes: '**ESP32 Firmware Build Report**'
       - name: Update build report comment
-        if: steps.pr.outputs.number != ''
+        if: github.event_name == 'pull_request'
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ steps.pr.outputs.number }}
+          issue-number: ${{ github.event.number }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           body: |
             **ESP32 Firmware Build Report**
@@ -80,13 +81,14 @@ jobs:
             
             *Updated automatically with latest build information*
       - name: Extract version
+        if: github.event_name == 'push'
         id: get_version
         run: |
           VERSION=$(sed -n 's/^const char\* firmwareVersion = "\(.*\)";/\1/p' src/config.cpp)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Check for source code changes
         id: check_changes
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push'
         run: |
           # Only tag commits that contain source code changes, not infrastructure-only changes
           # Source paths: src/, data/ (ESP32 core functionality)
@@ -125,7 +127,7 @@ jobs:
             echo "ℹ️ Only infrastructure changes detected - skipping tagging"
           fi
       - name: Tag commit
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check_changes.outputs.has_source_changes == 'true'
+        if: success() && github.event_name == 'push' && steps.check_changes.outputs.has_source_changes == 'true'
         uses: rickstaa/action-create-tag@v1
         with:
           tag: v${{ steps.get_version.outputs.version }}
