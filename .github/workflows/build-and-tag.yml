@@ -82,6 +82,10 @@ jobs:
         id: check_changes
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
+          # Only tag commits that contain source code changes, not infrastructure-only changes
+          # Source paths: src/, data/, web/, platformio.ini
+          # Infrastructure paths: .github/, k8s/, scripts/, README.md, etc.
+          
           # Get the list of changed files in this push
           # For merge commits, compare with the first parent to get all changes from the merged branch
           if [ $(git rev-list --count ${{ github.event.before }}..${{ github.sha }}) -gt 1 ]; then
