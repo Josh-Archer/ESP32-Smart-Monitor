@@ -29,20 +29,27 @@ unsigned long lastStatusPublish = 0;
 const unsigned long MQTT_RECONNECT_INTERVAL = 5000;    // Try to reconnect every 5 seconds
 const unsigned long STATUS_PUBLISH_INTERVAL = 30000;   // Publish status every 30 seconds
 
+// Helper to format memory usage as "freeMB/totalMB"
+static String getMemoryUsage() {
+    float freeMB = ESP.getFreeHeap() / (1024.0 * 1024.0);
+    float totalMB = ESP.getHeapSize() / (1024.0 * 1024.0);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.2fMB/%.2fMB", freeMB, totalMB);
+    return String(buf);
+}
+
 // Publish all sensor states (not just discovery)
 static void publishMetricsIndividual() {
     // WiFi Signal
     mqttClient.publish("homeassistant/sensor/poop_monitor/wifi_signal", String(WiFi.RSSI()).c_str(), false);
+    mqttClient.publish("homeassistant/sensor/poop_monitor/wifi_quality", classifyWiFiSignal(WiFi.RSSI()), false);
     // DNS
     extern bool isDNSWorking;
     mqttClient.publish("homeassistant/sensor/poop_monitor/dns_status", isDNSWorking ? "ON" : "OFF", false);
     // Uptime seconds
     mqttClient.publish("homeassistant/sensor/poop_monitor/uptime", String(millis() / 1000).c_str(), false);
     // Free Memory
-    mqttClient.publish("homeassistant/sensor/poop_monitor/memory", String(ESP.getFreeHeap()).c_str(), false);
-    // Last Heartbeat
-    extern unsigned long lastSuccessfulHeartbeat;
-    mqttClient.publish("homeassistant/sensor/poop_monitor/last_heartbeat", String(lastSuccessfulHeartbeat).c_str(), false);
+    mqttClient.publish("homeassistant/sensor/poop_monitor/memory", getMemoryUsage().c_str(), false);
     // IP Address
     mqttClient.publish("homeassistant/sensor/poop_monitor/ip_address", WiFi.localIP().toString().c_str(), false);
     // Firmware
@@ -141,9 +148,11 @@ void publishHomeAssistantDiscovery() {
         publishSensor("sensor", "status", "Status", 
                   nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:monitor");
     
-    // 2. WiFi Signal Strength (reads from consolidated status topic)
-        publishSensor("sensor", "wifi_signal", "WiFi Signal", 
-                  "dBm", "signal_strength", MQTT_STATUS_TOPIC, "mdi:wifi");
+    // 2. WiFi Signal Strength
+        publishSensor("sensor", "wifi_signal", "WiFi Signal",
+                  "dBm", "signal_strength", "homeassistant/sensor/poop_monitor/wifi_signal", "mdi:wifi");
+        publishSensor("sensor", "wifi_quality", "WiFi Quality",
+                  nullptr, nullptr, "homeassistant/sensor/poop_monitor/wifi_quality", "mdi:wifi");
     
     // 3. DNS Status (reads from consolidated status topic)
         publishSensor("binary_sensor", "dns", "DNS", 
@@ -153,13 +162,13 @@ void publishHomeAssistantDiscovery() {
         publishSensor("sensor", "uptime", "Uptime", 
                   "s", "duration", MQTT_STATUS_TOPIC, "mdi:clock");
     
-    // 5. Memory Usage (reads from consolidated status topic)
-        publishSensor("sensor", "free_memory", "Free Memory", 
-                  "bytes", nullptr, MQTT_STATUS_TOPIC, "mdi:memory");
+    // 5. Memory Usage
+        publishSensor("sensor", "free_memory", "Free Memory",
+                  nullptr, nullptr, "homeassistant/sensor/poop_monitor/memory", "mdi:memory");
     
-    // 6. Last Heartbeat Success (reads from consolidated status topic)
-        publishSensor("sensor", "last_heartbeat", "Last Heartbeat", 
-                  nullptr, "timestamp", MQTT_STATUS_TOPIC, "mdi:heart-pulse");
+    // 6. Last Heartbeat Success
+        publishSensor("sensor", "last_heartbeat", "Last Heartbeat",
+                  nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:heart-pulse");
     
     // 7. IP Address (reads from consolidated status topic)
         publishSensor("sensor", "ip_address", "IP Address", 
@@ -226,9 +235,9 @@ void publishSensor(const char* component, const char* object_id, const char* nam
         configDoc["json_attributes_topic"] = state_topic;
         configDoc["value_template"] = "{{ value_json.status | default('online') }}";
     } else if (strcmp(object_id, "wifi_signal") == 0) {
-        configDoc["value_template"] = "{{ value_json.wifi_signal_dbm | default(0) }}";
+        configDoc["value_template"] = "{{ value | float }}";
     } else if (strcmp(object_id, "wifi_quality") == 0) {
-        configDoc["value_template"] = "{{ value_json.wifi_quality | default('unknown') }}";
+        configDoc["value_template"] = "{{ value | default('unknown') }}";
     } else if (strcmp(object_id, "dns") == 0) {
         configDoc["value_template"] = "{{ 'ON' if value_json.dns_working else 'OFF' }}";
         configDoc["payload_on"] = "ON";
@@ -236,11 +245,11 @@ void publishSensor(const char* component, const char* object_id, const char* nam
     } else if (strcmp(object_id, "uptime") == 0) {
         configDoc["value_template"] = "{{ (value_json.uptime_ms / 1000) | round(0) }}";
     } else if (strcmp(object_id, "free_memory") == 0) {
-        configDoc["value_template"] = "{{ value_json.free_memory_bytes | default(0) }}";
+        configDoc["value_template"] = "{{ value | default('0MB/0MB') }}";
     } else if (strcmp(object_id, "free_memory_percent") == 0) {
         configDoc["value_template"] = "{{ value_json.free_memory_percent | default(0) }}";
     } else if (strcmp(object_id, "last_heartbeat") == 0) {
-        configDoc["value_template"] = "{{ value_json.last_heartbeat_success | default('Never') }}";
+        configDoc["value_template"] = "{{ value_json.last_heartbeat_formatted | default('Never') }}";
     } else if (strcmp(object_id, "ip_address") == 0) {
         configDoc["value_template"] = "{{ value_json.ip_address | default('unknown') }}";
     } else if (strcmp(object_id, "firmware") == 0) {
@@ -303,11 +312,14 @@ String getDeviceStatusJSON() {
     statusDoc["ip_address"] = WiFi.localIP().toString();
     statusDoc["wifi_signal_dbm"] = WiFi.RSSI();
     statusDoc["wifi_signal_percentage"] = constrain(2 * (WiFi.RSSI() + 100), 0, 100);
+    statusDoc["wifi_quality"] = classifyWiFiSignal(WiFi.RSSI());
     
     // System info
     statusDoc["uptime_ms"] = millis();
     statusDoc["uptime_formatted"] = formatUptime(millis());
     statusDoc["free_memory_bytes"] = ESP.getFreeHeap();
+    statusDoc["total_memory_bytes"] = ESP.getHeapSize();
+    statusDoc["free_memory_formatted"] = getMemoryUsage();
     statusDoc["firmware_version"] = firmwareVersion;
     // Alerts
     extern bool areAlertsPaused();
@@ -327,11 +339,14 @@ String getDeviceStatusJSON() {
     // Heartbeat info (using external variables)
     extern unsigned long lastSuccessfulHeartbeat;
     extern int lastHeartbeatResponseCode;
-    
+
+    statusDoc["last_heartbeat_uptime_ms"] = lastSuccessfulHeartbeat;
     if (lastSuccessfulHeartbeat > 0) {
-        statusDoc["last_heartbeat_success"] = String(lastSuccessfulHeartbeat);
         statusDoc["last_heartbeat_code"] = lastHeartbeatResponseCode;
+        statusDoc["last_heartbeat_formatted"] = formatUptime(lastSuccessfulHeartbeat);
         statusDoc["time_since_last_success_seconds"] = (millis() - lastSuccessfulHeartbeat) / 1000;
+    } else {
+        statusDoc["last_heartbeat_formatted"] = "Never";
     }
     
     // DNS configuration
@@ -360,6 +375,7 @@ void handleMQTTLoop() {
     unsigned long now = millis();
     if (now - lastStatusPublish >= STATUS_PUBLISH_INTERVAL) {
         publishDeviceStatus();
+        mqttClient.publish("homeassistant/sensor/poop_monitor/memory", getMemoryUsage().c_str(), false);
         publishMetricsIndividual();
         lastStatusPublish = now;
     }
