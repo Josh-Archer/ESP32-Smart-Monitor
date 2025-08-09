@@ -10,8 +10,14 @@
 #include "dns_manager.h"
 #include "ota_manager.h"
 #include "system_utils.h"
+
+#ifdef ENABLE_WEBSERVER
 #include "web_server.h"
+#endif
+
+#ifdef ENABLE_MQTT
 #include "mqtt_manager.h"
+#endif
 
 Preferences preferences;
 
@@ -99,8 +105,14 @@ void setup() {
   // Initialize modules
   initOTA();
   initTelnet();
+
+#ifdef ENABLE_WEBSERVER
   initWebServer();
+#endif
+
+#ifdef ENABLE_MQTT
   initializeMQTT();  // Initialize MQTT for Home Assistant integration
+#endif
   
   // Check if a reboot was requested before last boot
   if (checkRebootFlag()) {
@@ -111,14 +123,22 @@ void setup() {
 void loop() {
   handleOTA();
   handleTelnet();
+
+#ifdef ENABLE_WEBSERVER
   handleWebServer();
+#endif
+
+#ifdef ENABLE_MQTT
   handleMQTTLoop();  // Handle MQTT connection and publishing
+#endif
   
   // Check for reboot flag (set by web interface)
   if (checkRebootFlag()) {
+#ifdef ENABLE_MQTT
     // Publish offline status before rebooting
     publishAvailability(false);
     delay(100);  // Give time for MQTT message to send
+#endif
     rebootDevice(3000, "Remote reboot request");
   }
   

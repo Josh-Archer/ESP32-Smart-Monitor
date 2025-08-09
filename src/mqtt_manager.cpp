@@ -1,3 +1,5 @@
+#ifdef ENABLE_MQTT
+
 #include "telnet.h"
 #include "mqtt_manager.h"
 #include "config.h"
@@ -516,3 +518,5 @@ void onMQTTMessage(char* topic, byte* payload, unsigned int length) {
         publishAllSensors();
     }
 }
+
+#endif // ENABLE_MQTT

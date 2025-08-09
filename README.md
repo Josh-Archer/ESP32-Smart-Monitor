@@ -2,7 +2,20 @@
 
 An ESP32-based monitoring device with **Home Assistant integration**, modern web interface, live console streaming, smart DNS monitoring, and comprehensive automation tools.
 
-## What's New (v2.4.0)
+## What's New (v2.5.0)
+
+### 2.5.0
+
+- **Conditional Compilation System** - Revolutionary build optimization with three configurations for different deployment needs.
+- **MQTT-Only Configuration** - Default optimized build with **39KB flash savings** (991KB vs 1030KB) for Home Assistant-only deployments.
+- **WebServer-Only Configuration** - Standalone web interface build with **18KB flash savings** for non-Home Assistant setups.
+- **Full Feature Configuration** - Complete build with both MQTT and WebServer (equivalent to previous versions).
+- **Enhanced Build Scripts** - Comprehensive shell and PowerShell automation with configuration-specific commands.
+- **Preprocessor-Based Optimization** - Clean conditional compilation using `#ifdef` directives for minimal overhead.
+- **Build Validation Suite** - Automated testing script (`test_build_configs.sh`) to verify all configurations compile successfully.
+- **Flexible Library Dependencies** - Smart library inclusion (PubSubClient only when MQTT enabled).
+- **Serial Upload Variants** - Development-friendly serial upload options for all three configurations.
+- **Memory Optimization Documentation** - Detailed flash usage comparison and configuration guide.
 
 ### 2.4.1
 
@@ -215,9 +228,13 @@ Load the scripts in your PowerShell session:
 
 **Build & Deploy:**
 
-- `pio-build` - Build firmware
+- `pio-build` - Build firmware (default: MQTT-only)
+- `pio-build-mqtt` - Build MQTT-only (smallest flash usage)
+- `pio-build-webserver` - Build WebServer-only  
+- `pio-build-both` - Build with both MQTT and WebServer
 - `pio-upload-ota` - Upload via OTA to hostname
-- `deploy-ota` - Complete workflow: build + upload + monitor
+- `deploy-ota` - Complete workflow: build + upload + monitor (MQTT-only)
+- `deploy-ota -Environment esp32-c3-devkitm-1-both` - Deploy full features
 - `deploy-ota -clean` - Clean build + upload + monitor
 
 **Monitoring:**
@@ -260,25 +277,90 @@ Load the scripts in your PowerShell session:
 #### `upload_and_monitor.sh` - All-in-One Deployment
 
 ```bash
-./upload_and_monitor.sh     # Build, upload, and monitor in one command
+./upload_and_monitor.sh          # MQTT-only build (default, smallest)
+./upload_and_monitor.sh mqtt     # MQTT-only build  
+./upload_and_monitor.sh webserver # WebServer-only build
+./upload_and_monitor.sh both     # Full feature build
+./upload_and_monitor.sh serial   # MQTT-only with serial upload
 ```
 
 ## Building and Deploying
+
+### Build Configurations
+
+The ESP32 firmware supports three build configurations to optimize flash usage:
+
+#### 1. MQTT-Only (Default) - **Recommended**
+- **Flash usage**: ~991KB (75.6%) - **Smallest**
+- **Features**: Home Assistant integration, telnet console, OTA updates
+- **Use case**: Primary monitoring with Home Assistant
+- **Build**: `esp32-c3-devkitm-1` (default environment)
+
+```bash
+# Shell
+./upload_and_monitor.sh          # MQTT-only (default)
+./upload_and_monitor.sh mqtt     # Explicit MQTT-only
+
+# PowerShell  
+pio-build-mqtt                   # Build MQTT-only
+deploy-ota                       # Deploy MQTT-only
+```
+
+#### 2. WebServer-Only
+- **Flash usage**: ~1011KB (77.2%)
+- **Features**: Web interface, API endpoints, telnet console, OTA updates  
+- **Use case**: Standalone monitoring without Home Assistant
+- **Build**: `esp32-c3-devkitm-1-webserver`
+
+```bash
+# Shell
+./upload_and_monitor.sh webserver
+
+# PowerShell
+pio-build-webserver
+deploy-ota -Environment esp32-c3-devkitm-1-webserver
+```
+
+#### 3. Both MQTT and WebServer
+- **Flash usage**: ~1030KB (78.6%) - **Largest**
+- **Features**: Full feature set (equivalent to previous versions)
+- **Use case**: Maximum flexibility with both integration options
+- **Build**: `esp32-c3-devkitm-1-both`
+
+```bash
+# Shell  
+./upload_and_monitor.sh both
+
+# PowerShell
+pio-build-both
+deploy-ota -Environment esp32-c3-devkitm-1-both
+```
+
+### Flash Usage Comparison
+
+| Configuration | Flash Usage | Savings vs Both | Features |
+|---------------|-------------|-----------------|----------|
+| **MQTT-only** | 991KB (75.6%) | **39KB saved** | HA integration, telnet, OTA |
+| WebServer-only | 1011KB (77.2%) | **18KB saved** | Web UI, API, telnet, OTA |
+| Both | 1030KB (78.6%) | - | Full feature set |
 
 ### Quick Start
 
 1. **Configure device**: Edit `src/config.cpp` with your WiFi, MQTT, and other settings
 2. **Build and upload**: `pio-upload-ota` (or `./upload_and_monitor.sh`)
-3. **Access web interface**: `http://poop-monitor.local/`
-4. **Check Home Assistant**: Device should auto-discover with all sensors
+3. **Access device**: 
+   - **MQTT-only**: Home Assistant auto-discovery
+   - **WebServer/Both**: `http://poop-monitor.local/`
 
 ### Development Workflow
 
-- **Firmware deployment**: `pio-upload-ota` (builds and uploads firmware via OTA)
-- **Combined deployment**: `./upload_and_monitor.sh` (builds, uploads, monitors)
+- **Firmware deployment**: `pio-upload-ota` (builds and uploads MQTT-only firmware via OTA)
+- **Combined deployment**: `./upload_and_monitor.sh [mqtt|webserver|both]` (builds, uploads, monitors)
 - **Status monitoring**: `./monitor_esp32.sh` (comprehensive diagnostics)
 - **Remote management**: `./reboot_esp32.sh` (safe remote reboot)
 - **Web UI deployment**: `web-deploy` (Docker/Kubernetes deployment)
+
+**Default behavior**: All scripts now default to MQTT-only builds for optimal flash usage.
 
 ## Remote Access
 
