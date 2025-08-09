@@ -2,6 +2,7 @@
 
 # ESP32 Upload and Monitor Script
 # This script uploads firmware and then runs monitoring
+# Supports different build configurations
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -25,7 +26,55 @@ print_banner() {
     echo -e "${BLUE}============================================================${NC}"
 }
 
-print_banner "ESP32 Upload and Monitor"
+show_usage() {
+    echo "Usage: $0 [BUILD_TYPE]"
+    echo ""
+    echo "BUILD_TYPE options:"
+    echo "  mqtt        MQTT-only build (default, smallest flash usage)"
+    echo "  webserver   WebServer-only build"
+    echo "  both        Both MQTT and WebServer (full features)"
+    echo "  serial      Use serial upload instead of OTA"
+    echo ""
+    echo "Examples:"
+    echo "  $0              # MQTT-only build (default)"
+    echo "  $0 mqtt         # MQTT-only build"
+    echo "  $0 webserver    # WebServer-only build"
+    echo "  $0 both         # Full feature build"
+    echo "  $0 serial       # MQTT-only with serial upload"
+    echo ""
+}
+
+# Parse command line arguments
+BUILD_TYPE="${1:-mqtt}"
+ENVIRONMENT=""
+
+case "$BUILD_TYPE" in
+    "mqtt"|"")
+        ENVIRONMENT="esp32-c3-devkitm-1"
+        print_banner "ESP32 Upload and Monitor - MQTT Only"
+        ;;
+    "webserver")
+        ENVIRONMENT="esp32-c3-devkitm-1-webserver"
+        print_banner "ESP32 Upload and Monitor - WebServer Only"
+        ;;
+    "both")
+        ENVIRONMENT="esp32-c3-devkitm-1-both"
+        print_banner "ESP32 Upload and Monitor - Full Features"
+        ;;
+    "serial")
+        ENVIRONMENT="esp32-c3-devkitm-1-serial"
+        print_banner "ESP32 Upload and Monitor - MQTT Only (Serial)"
+        ;;
+    "help"|"-h"|"--help")
+        show_usage
+        exit 0
+        ;;
+    *)
+        print_status $RED "Error: Unknown build type '$BUILD_TYPE'"
+        show_usage
+        exit 1
+        ;;
+esac
 
 # Check if we're in the right directory
 if [ ! -f "platformio.ini" ]; then
@@ -33,9 +82,11 @@ if [ ! -f "platformio.ini" ]; then
     exit 1
 fi
 
+print_status $CYAN "Building with environment: $ENVIRONMENT"
+
 # Step 1: Build the project
 print_status $YELLOW "Building project..."
-if ~/.platformio/penv/bin/platformio run; then
+if ~/.local/bin/platformio run --environment $ENVIRONMENT; then
     print_status $GREEN "✓ Build successful"
 else
     print_status $RED "✗ Build failed"
@@ -44,7 +95,7 @@ fi
 
 # Step 2: Upload firmware
 print_status $YELLOW "Uploading firmware..."
-if ~/.platformio/penv/bin/platformio run --target upload; then
+if ~/.local/bin/platformio run --environment $ENVIRONMENT --target upload; then
     print_status $GREEN "✓ Upload successful"
 else
     print_status $RED "✗ Upload failed"
@@ -71,4 +122,10 @@ echo "  ./monitor_esp32.sh          # Run monitor again"
 echo "  ./monitor_esp32.sh --telnet # Connect to telnet"
 echo "  ./monitor_esp32.sh --web    # Open web interface"
 echo "  ./reboot_esp32.sh           # Remote reboot"
-echo "  ./upload_and_monitor.sh     # Run this script again"
+echo "  ./upload_and_monitor.sh     # MQTT-only build"
+echo "  ./upload_and_monitor.sh both # Full feature build"
+echo ""
+echo -e "${BLUE}Build configurations:${NC}"
+echo "  mqtt        MQTT-only (default, smallest)"
+echo "  webserver   WebServer-only"
+echo "  both        Full features"

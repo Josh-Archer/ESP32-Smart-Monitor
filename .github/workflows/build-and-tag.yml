@@ -19,6 +19,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc
       - uses: n-vr/setup-platformio-action@v1
       - name: Create dummy credentials
         run: |
@@ -42,14 +46,105 @@ jobs:
           const char* MQTT_USER = "";
           const char* MQTT_PASSWORD = "";
           EOF
-      - name: Build firmware
+      - name: Build all firmware configurations
         id: build
         run: |
-          pio run | tee build.log
-          RAM=$(grep -Eo 'RAM:.*' build.log | grep -Eo '[0-9.]+%' | head -1)
-          FLASH=$(grep -Eo 'Flash:.*' build.log | grep -Eo '[0-9.]+%' | head -1)
-          echo "ram=$RAM" >> $GITHUB_OUTPUT
-          echo "flash=$FLASH" >> $GITHUB_OUTPUT
+          # Build MQTT-only configuration (default)
+          echo "Building MQTT-only configuration..."
+          pio run --environment esp32-c3-devkitm-1 | tee build-mqtt.log
+          MQTT_RAM=$(grep -Eo 'RAM:.*' build-mqtt.log | grep -Eo '[0-9.]+%' | head -1)
+          MQTT_FLASH=$(grep -Eo 'Flash:.*' build-mqtt.log | grep -Eo '[0-9.]+%' | head -1)
+          MQTT_FLASH_BYTES=$(grep -Eo 'Flash:.*' build-mqtt.log | grep -Eo '[0-9,]+ bytes' | head -1 | tr -d ',')
+          
+          # Build WebServer-only configuration
+          echo "Building WebServer-only configuration..."
+          pio run --environment esp32-c3-devkitm-1-webserver | tee build-webserver.log
+          WEB_RAM=$(grep -Eo 'RAM:.*' build-webserver.log | grep -Eo '[0-9.]+%' | head -1)
+          WEB_FLASH=$(grep -Eo 'Flash:.*' build-webserver.log | grep -Eo '[0-9.]+%' | head -1)
+          WEB_FLASH_BYTES=$(grep -Eo 'Flash:.*' build-webserver.log | grep -Eo '[0-9,]+ bytes' | head -1 | tr -d ',')
+          
+          # Build Both configurations
+          echo "Building Both MQTT and WebServer configuration..."
+          pio run --environment esp32-c3-devkitm-1-both | tee build-both.log
+          BOTH_RAM=$(grep -Eo 'RAM:.*' build-both.log | grep -Eo '[0-9.]+%' | head -1)
+          BOTH_FLASH=$(grep -Eo 'Flash:.*' build-both.log | grep -Eo '[0-9.]+%' | head -1)
+          BOTH_FLASH_BYTES=$(grep -Eo 'Flash:.*' build-both.log | grep -Eo '[0-9,]+ bytes' | head -1 | tr -d ',')
+          
+          # Output all values
+          echo "mqtt_ram=$MQTT_RAM" >> $GITHUB_OUTPUT
+          echo "mqtt_flash=$MQTT_FLASH" >> $GITHUB_OUTPUT
+          echo "mqtt_flash_bytes=$MQTT_FLASH_BYTES" >> $GITHUB_OUTPUT
+          echo "web_ram=$WEB_RAM" >> $GITHUB_OUTPUT
+          echo "web_flash=$WEB_FLASH" >> $GITHUB_OUTPUT
+          echo "web_flash_bytes=$WEB_FLASH_BYTES" >> $GITHUB_OUTPUT
+          echo "both_ram=$BOTH_RAM" >> $GITHUB_OUTPUT
+          echo "both_flash=$BOTH_FLASH" >> $GITHUB_OUTPUT
+          echo "both_flash_bytes=$BOTH_FLASH_BYTES" >> $GITHUB_OUTPUT
+          
+          echo "All builds completed successfully!"
+      - name: Get main branch memory usage (for comparison)
+        if: github.event_name == 'pull_request'
+        id: main-build
+        run: |
+          # Try to get main branch memory usage for comparison
+          # This is a best-effort comparison - if it fails, we'll skip comparisons
+          set +e
+          
+          # Fetch main branch
+          git fetch origin main:main || true
+          
+          # Save current state
+          CURRENT_SHA=$(git rev-parse HEAD)
+          
+          # Try to checkout main and build for comparison
+          if git checkout main 2>/dev/null; then
+            echo "Building main branch for comparison..."
+            
+            # Create dummy credentials for main branch build
+            cat <<'EOF' > src/credentials.h
+          #pragma once
+          extern const char* WIFI_SSID;
+          extern const char* WIFI_PASSWORD;
+          extern const char* OTA_PASSWORD;
+          extern const char* PUSHOVER_TOKEN;
+          extern const char* PUSHOVER_USER;
+          extern const char* MQTT_USER;
+          extern const char* MQTT_PASSWORD;
+          EOF
+            cat <<'EOF' > src/credentials.cpp
+          #include "credentials.h"
+          const char* WIFI_SSID = "";
+          const char* WIFI_PASSWORD = "";
+          const char* OTA_PASSWORD = "";
+          const char* PUSHOVER_TOKEN = "";
+          const char* PUSHOVER_USER = "";
+          const char* MQTT_USER = "";
+          const char* MQTT_PASSWORD = "";
+          EOF
+            
+            # Build main branch (try both old and new format)
+            if pio run 2>/dev/null | tee main-build.log; then
+              MAIN_FLASH_BYTES=$(grep -Eo 'Flash:.*' main-build.log | grep -Eo '[0-9,]+ bytes' | head -1 | tr -d ',')
+              MAIN_RAM=$(grep -Eo 'RAM:.*' main-build.log | grep -Eo '[0-9.]+%' | head -1)
+              MAIN_FLASH=$(grep -Eo 'Flash:.*' main-build.log | grep -Eo '[0-9.]+%' | head -1)
+              echo "main_flash_bytes=$MAIN_FLASH_BYTES" >> $GITHUB_OUTPUT
+              echo "main_ram=$MAIN_RAM" >> $GITHUB_OUTPUT
+              echo "main_flash=$MAIN_FLASH" >> $GITHUB_OUTPUT
+              echo "has_main_comparison=true" >> $GITHUB_OUTPUT
+              echo "Main branch build successful for comparison"
+            else
+              echo "Main branch build failed, skipping comparison"
+              echo "has_main_comparison=false" >> $GITHUB_OUTPUT
+            fi
+            
+            # Return to PR branch
+            git checkout $CURRENT_SHA
+          else
+            echo "Could not checkout main branch, skipping comparison"
+            echo "has_main_comparison=false" >> $GITHUB_OUTPUT
+          fi
+          
+          set -e
       - name: Find pull request
         if: github.event_name == 'pull_request'
         id: pr
@@ -62,73 +157,213 @@ jobs:
           issue-number: ${{ github.event.number }}
           comment-author: 'github-actions[bot]'
           body-includes: '**ESP32 Firmware Build Report**'
-      - name: Update build report comment
+      - name: Create comprehensive build report
+        if: github.event_name == 'pull_request'
+        id: report
+        run: |
+          # Function to calculate percentage difference and format with emoji
+          calculate_diff() {
+            local current=$1
+            local main=$2
+            local has_comparison=$3
+            
+            if [ "$has_comparison" = "true" ] && [ -n "$current" ] && [ -n "$main" ] && [ "$main" != "0" ]; then
+              # Calculate percentage difference
+              local diff=$(echo "scale=1; ($current - $main) * 100 / $main" | bc -l 2>/dev/null || echo "0")
+              local abs_diff=$(echo "$diff" | sed 's/-//')
+              
+              if (( $(echo "$diff > 1" | bc -l) )); then
+                echo "📈 +${abs_diff}%"
+              elif (( $(echo "$diff < -1" | bc -l) )); then
+                echo "📉 -${abs_diff}%"
+              else
+                echo "➡️ ~0%"
+              fi
+            else
+              echo "➖ N/A"
+            fi
+          }
+          
+          # Function to format bytes with commas
+          format_bytes() {
+            echo $1 | sed ':a;s/\B[0-9]\{3\}\>/,&/;ta'
+          }
+          
+          # Get comparison values
+          HAS_MAIN="${{ steps.main-build.outputs.has_main_comparison }}"
+          MAIN_FLASH_BYTES="${{ steps.main-build.outputs.main_flash_bytes }}"
+          MAIN_RAM="${{ steps.main-build.outputs.main_ram }}"
+          MAIN_FLASH="${{ steps.main-build.outputs.main_flash }}"
+          
+          # Calculate differences for each configuration
+          MQTT_FLASH_DIFF=$(calculate_diff "${{ steps.build.outputs.mqtt_flash_bytes }}" "$MAIN_FLASH_BYTES" "$HAS_MAIN")
+          MQTT_RAM_DIFF=$(calculate_diff "$(echo '${{ steps.build.outputs.mqtt_ram }}' | sed 's/%//')" "$(echo '$MAIN_RAM' | sed 's/%//')" "$HAS_MAIN")
+          
+          WEB_FLASH_DIFF=$(calculate_diff "${{ steps.build.outputs.web_flash_bytes }}" "$MAIN_FLASH_BYTES" "$HAS_MAIN")
+          WEB_RAM_DIFF=$(calculate_diff "$(echo '${{ steps.build.outputs.web_ram }}' | sed 's/%//')" "$(echo '$MAIN_RAM' | sed 's/%//')" "$HAS_MAIN")
+          
+          BOTH_FLASH_DIFF=$(calculate_diff "${{ steps.build.outputs.both_flash_bytes }}" "$MAIN_FLASH_BYTES" "$HAS_MAIN")
+          BOTH_RAM_DIFF=$(calculate_diff "$(echo '${{ steps.build.outputs.both_ram }}' | sed 's/%//')" "$(echo '$MAIN_RAM' | sed 's/%//')" "$HAS_MAIN")
+          
+          # Output variables for the comment
+          echo "mqtt_flash_diff=$MQTT_FLASH_DIFF" >> $GITHUB_OUTPUT
+          echo "mqtt_ram_diff=$MQTT_RAM_DIFF" >> $GITHUB_OUTPUT
+          echo "web_flash_diff=$WEB_FLASH_DIFF" >> $GITHUB_OUTPUT
+          echo "web_ram_diff=$WEB_RAM_DIFF" >> $GITHUB_OUTPUT
+          echo "both_flash_diff=$BOTH_FLASH_DIFF" >> $GITHUB_OUTPUT
+          echo "both_ram_diff=$BOTH_RAM_DIFF" >> $GITHUB_OUTPUT
+          
+          # Format bytes for display
+          echo "mqtt_flash_formatted=$(format_bytes ${{ steps.build.outputs.mqtt_flash_bytes }})" >> $GITHUB_OUTPUT
+          echo "web_flash_formatted=$(format_bytes ${{ steps.build.outputs.web_flash_bytes }})" >> $GITHUB_OUTPUT
+          echo "both_flash_formatted=$(format_bytes ${{ steps.build.outputs.both_flash_bytes }})" >> $GITHUB_OUTPUT
+      - name: Analyze version impact for PR
+        if: github.event_name == 'pull_request'
+        id: pr_version_analysis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+          
+          echo "Analyzing PR for version impact..."
+          python scripts/version_manager.py --dry-run --analyze-pr=${{ github.event.number }} --github-token="${GITHUB_TOKEN}" > pr_analysis.txt 2>&1 || true
+          
+          # Extract suggested increment
+          if grep -q "Version increment type:" pr_analysis.txt; then
+            INCREMENT=$(grep "Version increment type:" pr_analysis.txt | cut -d: -f2 | xargs)
+            echo "suggested_increment=$INCREMENT" >> $GITHUB_OUTPUT
+          else
+            echo "suggested_increment=none" >> $GITHUB_OUTPUT
+          fi
+          
+          # Save analysis for comment
+          echo 'PR_ANALYSIS<<EOF' >> $GITHUB_ENV
+          cat pr_analysis.txt >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
+      - name: Update PR comment with comprehensive analysis
         if: github.event_name == 'pull_request'
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.number }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          edit-mode: replace
           body: |
-            **ESP32 Firmware Build Report**
+            ## 🚀 ESP32 Firmware Build Report
             
-            📅 **Latest Build:** ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
+            📅 **Latest Build:** ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}  
             🔗 **Commit:** [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
             
-            **Memory Usage:**
-            - Flash: ${{ steps.build.outputs.flash }}
-            - RAM: ${{ steps.build.outputs.ram }}
+            ---
             
-            *Updated automatically with latest build information*
-      - name: Extract version
+            ### 📊 Build Configurations
+            
+            | Configuration | Flash Usage | RAM Usage | vs Main |
+            |---|---|---|---|
+            | 🏠 **MQTT Only** *(default)* | `${{ steps.report.outputs.mqtt_flash_formatted }} bytes` (`${{ steps.build.outputs.mqtt_flash }}`) | `${{ steps.build.outputs.mqtt_ram }}` | ${{ steps.report.outputs.mqtt_flash_diff }} |
+            | 🌐 **WebServer Only** | `${{ steps.report.outputs.web_flash_formatted }} bytes` (`${{ steps.build.outputs.web_flash }}`) | `${{ steps.build.outputs.web_ram }}` | ${{ steps.report.outputs.web_flash_diff }} |
+            | 🔄 **Both Features** | `${{ steps.report.outputs.both_flash_formatted }} bytes` (`${{ steps.build.outputs.both_flash }}`) | `${{ steps.build.outputs.both_ram }}` | ${{ steps.report.outputs.both_flash_diff }} |
+            
+            ---
+            
+            ### 🏷️ Version Impact Analysis
+            - **Suggested increment:** `${{ steps.pr_version_analysis.outputs.suggested_increment }}`
+            
+            <details>
+            <summary>📋 Detailed Version Analysis</summary>
+            
+            ```
+            ${{ env.PR_ANALYSIS }}
+            ```
+            </details>
+            
+            ---
+            
+            ### 💾 Memory Optimization Summary
+            
+            #### 🏠 MQTT-Only Build *(Recommended for Home Assistant)*
+            - **Flash:** ${{ steps.build.outputs.mqtt_flash }} (${{ steps.report.outputs.mqtt_flash_diff }} from main)
+            - **RAM:** ${{ steps.build.outputs.mqtt_ram }} (${{ steps.report.outputs.mqtt_ram_diff }} from main)
+            - **Features:** Home Assistant integration, Telnet console, OTA updates
+            - **Environment:** `esp32-c3-devkitm-1`
+            
+            #### 🌐 WebServer-Only Build *(Web Interface)*
+            - **Flash:** ${{ steps.build.outputs.web_flash }} (${{ steps.report.outputs.web_flash_diff }} from main)
+            - **RAM:** ${{ steps.build.outputs.web_ram }} (${{ steps.report.outputs.web_ram_diff }} from main)
+            - **Features:** Web interface, API endpoints, Telnet console, OTA updates
+            - **Environment:** `esp32-c3-devkitm-1-webserver`
+            
+            #### 🔄 Full Feature Build *(Everything)*
+            - **Flash:** ${{ steps.build.outputs.both_flash }} (${{ steps.report.outputs.both_flash_diff }} from main)
+            - **RAM:** ${{ steps.build.outputs.both_ram }} (${{ steps.report.outputs.both_ram_diff }} from main)
+            - **Features:** All features enabled (equivalent to previous versions)
+            - **Environment:** `esp32-c3-devkitm-1-both`
+            
+            ---
+            
+            ### 🛠️ Build Commands
+            
+            ```bash
+            # Default (MQTT-only)
+            ./upload_and_monitor.sh
+            
+            # WebServer-only  
+            ./upload_and_monitor.sh webserver
+            
+            # Both features
+            ./upload_and_monitor.sh both
+            ```
+            
+            <details>
+            <summary>📈 Legend</summary>
+            
+            - 📈 = Increase from main branch
+            - 📉 = Decrease from main branch  
+            - ➡️ = Minimal change (~0%)
+            - ➖ = No comparison data available
+            
+            </details>
+            
+            > **Note:** Add labels `major`, `minor`, or `patch` to override automatic version detection.
+            > Only source code changes trigger version increments - infrastructure changes are ignored.
+            
+            *🤖 Updated automatically with latest build and version analysis*
+      - name: Install Python dependencies
         if: github.event_name == 'push'
-        id: get_version
         run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      - name: Smart version analysis and update
+        if: github.event_name == 'push'
+        id: smart_version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Running smart version analysis..."
+          
+          # Run the version manager to analyze changes and update version if needed
+          if python scripts/version_manager.py --github-token="${GITHUB_TOKEN}"; then
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Extract the updated version from config.cpp
           VERSION=$(sed -n 's/^const char\* firmwareVersion = "\(.*\)";/\1/p' src/config.cpp)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-      - name: Check for source code changes
-        id: check_changes
-        if: github.event_name == 'push'
+          echo "Final version: $VERSION"
+      - name: Commit version updates
+        if: github.event_name == 'push' && steps.smart_version.outputs.version_changed == 'true'
         run: |
-          # Only tag commits that contain source code changes, not infrastructure-only changes
-          # Source paths: src/, data/ (ESP32 core functionality)
-          # Infrastructure paths: .github/, k8s/, scripts/, web/, platformio.ini, README.md, etc.
-          
-          # Get the list of changed files in this push
-          # For merge commits, compare with the first parent to get all changes from the merged branch
-          if [ $(git rev-list --count ${{ github.event.before }}..${{ github.sha }}) -gt 1 ]; then
-            # Multiple commits, likely a merge - check all files changed
-            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }})
-          else
-            # Single commit - check files changed in this commit
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-          fi
-          
-          echo "Changed files:"
-          echo "$CHANGED_FILES"
-          
-          # Define source code paths that should trigger tagging
-          SOURCE_PATHS="^(src/|data/)"
-          
-          # Check if any changed files match source code paths
-          HAS_SOURCE_CHANGES=false
-          while IFS= read -r file; do
-            if echo "$file" | grep -qE "$SOURCE_PATHS"; then
-              echo "Source code file changed: $file"
-              HAS_SOURCE_CHANGES=true
-            fi
-          done <<< "$CHANGED_FILES"
-          
-          echo "has_source_changes=$HAS_SOURCE_CHANGES" >> $GITHUB_OUTPUT
-          
-          if [ "$HAS_SOURCE_CHANGES" = "true" ]; then
-            echo "✅ Source code changes detected - will proceed with tagging"
-          else
-            echo "ℹ️ Only infrastructure changes detected - skipping tagging"
-          fi
-      - name: Tag commit
-        if: success() && github.event_name == 'push' && steps.check_changes.outputs.has_source_changes == 'true'
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add src/config.cpp README.md
+          git commit -m "Automatic version update to v${{ steps.smart_version.outputs.version }}" || echo "No changes to commit"
+          git push || echo "No changes to push"
+      - name: Create version tag
+        if: success() && github.event_name == 'push' && steps.smart_version.outputs.version_changed == 'true'
         uses: rickstaa/action-create-tag@v1
         with:
-          tag: v${{ steps.get_version.outputs.version }}
+          tag: v${{ steps.smart_version.outputs.version }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
