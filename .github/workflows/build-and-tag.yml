@@ -1,0 +1,83 @@
+name: Build and tag
+
+on:
+  push:
+    branches:
+      - '**'
+    tags: []
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: n-vr/setup-platformio-action@v1
+      - name: Create dummy credentials
+        run: |
+          cat <<'EOF' > src/credentials.h
+          #pragma once
+          extern const char* WIFI_SSID;
+          extern const char* WIFI_PASSWORD;
+          extern const char* OTA_PASSWORD;
+          extern const char* PUSHOVER_TOKEN;
+          extern const char* PUSHOVER_USER;
+          extern const char* MQTT_USER;
+          extern const char* MQTT_PASSWORD;
+          EOF
+          cat <<'EOF' > src/credentials.cpp
+          #include "credentials.h"
+          const char* WIFI_SSID = "";
+          const char* WIFI_PASSWORD = "";
+          const char* OTA_PASSWORD = "";
+          const char* PUSHOVER_TOKEN = "";
+          const char* PUSHOVER_USER = "";
+          const char* MQTT_USER = "";
+          const char* MQTT_PASSWORD = "";
+          EOF
+      - name: Build
+        id: build
+        run: |
+          pio run | tee build.log
+          RAM=$(grep -Eo 'RAM:.*' build.log | grep -Eo '[0-9.]+%' | head -1)
+          FLASH=$(grep -Eo 'Flash:.*' build.log | grep -Eo '[0-9.]+%' | head -1)
+          echo "ram=$RAM" >> $GITHUB_OUTPUT
+          echo "flash=$FLASH" >> $GITHUB_OUTPUT
+      - name: Find existing comment
+        if: github.event_name == 'pull_request'
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '**Memory Usage**'
+      - name: Comment memory usage
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          body: |
+            **Memory Usage**
+            - Flash: ${{ steps.build.outputs.flash }}
+            - RAM: ${{ steps.build.outputs.ram }}
+      - name: Extract version
+        id: get_version
+        run: |
+          VERSION=$(sed -n 's/^const char\* firmwareVersion = "\(.*\)";/\1/p' src/config.cpp)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Tag commit
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: rickstaa/action-create-tag@v1
+        with:
+          tag: v${{ steps.get_version.outputs.version }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
