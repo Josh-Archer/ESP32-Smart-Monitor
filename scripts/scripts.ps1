@@ -39,10 +39,10 @@ function pio-build-both {
 
 function pio-upload-ota {
     param(
-        [string]$Host,
+        [string]$TargetHost,
         [string]$Environment = "esp32-c3-devkitm-1"
     )
-    $target = if ($Host) { $Host } else { $DEVICE_HOSTNAME }
+    $target = if ($TargetHost) { $TargetHost } else { $DEVICE_HOSTNAME }
     $envDisplayName = switch ($Environment) {
         "esp32-c3-devkitm-1" { "MQTT-only" }
         "esp32-c3-devkitm-1-webserver" { "WebServer-only" }
