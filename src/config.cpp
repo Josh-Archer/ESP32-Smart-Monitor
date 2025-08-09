@@ -1,8 +1,7 @@
 #include "config.h"
 #include "credentials.h"
 
-// Firmware version - increment this with each update
-const char* firmwareVersion = "2.7.0";
+const char* firmwareVersion = "2.6.0";
 
 // WiFi Configuration (from credentials.h)
 const char* ssid = WIFI_SSID;

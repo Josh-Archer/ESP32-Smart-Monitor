@@ -1,5 +1,55 @@
 # Recent Changes Summary
 
+# Recent Changes Summary
+
+## 2.6.2 - OTA Rollback Protection + v2.6.1 Merged Features
+
+**Major Release: Automatic Firmware Rollback Protection + Build Optimization**
+
+This release combines the OTA rollback functionality with the conditional compilation system from v2.6.1, providing both enterprise-grade firmware reliability and optimized flash usage.
+
+**🔄 OTA Rollback Features (New in 2.6.2):**
+
+- **Automatic Boot Failure Detection** - Device tracks consecutive boot failures using ESP32's non-volatile storage
+- **Smart Rollback Triggering** - Automatically rolls back to previous firmware after 10 consecutive boot failures
+- **Native ESP32 Integration** - Uses ESP32's built-in OTA rollback capabilities (`esp_ota_mark_app_invalid_rollback_and_reboot()`)
+- **Firmware Validation** - Successful boots mark firmware as valid using `esp_ota_mark_app_valid_cancel_rollback()`
+- **High-Priority Notifications** - Pushover alerts sent when rollback is triggered
+- **Comprehensive Logging** - Detailed rollback events logged in telnet console
+- **Zero Downtime Recovery** - Device remains functional even with problematic firmware updates
+
+**⚙️ Build Optimization Features (Merged from 2.6.1):**
+
+- **Conditional Compilation System** - Three optimized configurations for different deployment needs
+- **MQTT-Only Configuration** - Default build with **39KB flash savings** (991KB vs 1030KB)
+- **WebServer-Only Configuration** - Standalone build with **18KB flash savings**
+- **Full Feature Configuration** - Complete build with both MQTT and WebServer
+- **Enhanced Build Scripts** - Comprehensive automation with configuration-specific commands
+- **Smart Library Dependencies** - PubSubClient only included when MQTT enabled
+
+**🛡️ Safety & Reliability:**
+
+- **Persistent Boot Tracking** - Boot failure count survives power cycles and crashes
+- **Safe Rollback Threshold** - Only triggers on 10+ consecutive failures (not random crashes)
+- **Automatic Counter Reset** - Successful operations clear failure counter
+- **Rollback Event Detection** - Device detects and logs when rollback recovery has occurred
+
+**🔧 Technical Changes:**
+
+- Updated firmware version to v2.6.2
+- Enhanced `ota_manager.h/cpp` with rollback functions:
+  - `checkRollbackCondition()` - Check if rollback should trigger
+  - `markFirmwareValid()` - Mark current firmware as stable
+  - `handleOTARollback()` - Execute rollback with notifications
+  - `getBootFailureCount()` / `resetBootFailureCount()` - Boot failure tracking
+- Modified `main.cpp` setup() with boot failure tracking and rollback handling
+- Added rollback detection and post-rollback logging
+- Merged conditional compilation system for optimized builds
+
+This update provides the ESP32 Smart Monitor with automatic recovery from problematic firmware updates while maintaining optimal flash usage through smart build configurations.
+
+---
+
 ## 2.4.1
 
 - **WiFi Signal Quality Summary:** MQTT now publishes a human-readable WiFi quality (Poor/Ok/Good/Excellent) via a new `wifi_quality` entity.
