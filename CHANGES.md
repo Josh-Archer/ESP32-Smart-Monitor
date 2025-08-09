@@ -1,5 +1,49 @@
 # Recent Changes Summary
 
+## 2.6.0 - OTA Rollback Protection
+
+**Major Release: Automatic Firmware Rollback Protection**
+
+This release introduces comprehensive OTA rollback functionality to ensure device reliability and prevent firmware-related outages.
+
+**🔄 OTA Rollback Features:**
+
+- **Automatic Boot Failure Detection** - Device tracks consecutive boot failures using ESP32's non-volatile storage
+- **Smart Rollback Triggering** - Automatically rolls back to previous firmware after 10 consecutive boot failures
+- **Native ESP32 Integration** - Uses ESP32's built-in OTA rollback capabilities (`esp_ota_mark_app_invalid_rollback_and_reboot()`)
+- **Firmware Validation** - Successful boots mark firmware as valid using `esp_ota_mark_app_valid_cancel_rollback()`
+- **High-Priority Notifications** - Pushover alerts sent when rollback is triggered
+- **Comprehensive Logging** - Detailed rollback events logged in telnet console
+- **Zero Downtime Recovery** - Device remains functional even with problematic firmware updates
+
+**🛡️ Safety & Reliability:**
+
+- **Persistent Boot Tracking** - Boot failure count survives power cycles and crashes
+- **Safe Rollback Threshold** - Only triggers on 10+ consecutive failures (not random crashes)
+- **Automatic Counter Reset** - Successful operations clear failure counter
+- **Rollback Event Detection** - Device detects and logs when rollback recovery has occurred
+
+**📝 Enhanced Documentation:**
+
+- **Complete Rollback Guide** - Detailed explanation of rollback process in README.md
+- **Technical Implementation** - Documentation of ESP32 OTA rollback mechanics
+- **Monitoring Instructions** - How to track rollback events via telnet, MQTT, and Pushover
+
+**🔧 Technical Changes:**
+
+- Updated firmware version to v2.6.0
+- Enhanced `ota_manager.h/cpp` with rollback functions:
+  - `checkRollbackCondition()` - Check if rollback should trigger
+  - `markFirmwareValid()` - Mark current firmware as stable
+  - `handleOTARollback()` - Execute rollback with notifications
+  - `getBootFailureCount()` / `resetBootFailureCount()` - Boot failure tracking
+- Modified `main.cpp` setup() with boot failure tracking and rollback handling
+- Added rollback detection and post-rollback logging
+
+This update ensures the ESP32 Smart Monitor can automatically recover from problematic firmware updates, maintaining device availability and reducing the need for manual intervention.
+
+---
+
 ## 2.4.1
 
 - **WiFi Signal Quality Summary:** MQTT now publishes a human-readable WiFi quality (Poor/Ok/Good/Excellent) via a new `wifi_quality` entity.
