@@ -72,6 +72,17 @@ class VersionManager:
             r'k8s/',
             r'scripts/',
             r'platformio\.ini',
+            r'\.vscode/',
+            r'docs/',
+            r'data/',
+            r'web/',
+            r'credentials\.template\.',
+            r'features\.md',
+            r'CHANGES\.md',
+            r'test_build_configs\.sh',
+            r'upload_and_monitor\.sh',
+            r'monitor_esp32\.sh',
+            r'reboot_esp32\.sh',
         ]
 
     def get_latest_version_tag(self) -> str:
@@ -188,6 +199,37 @@ class VersionManager:
                     return 'minor'
                 elif 'patch' in label_name or 'bugfix' in label_name:
                     return 'patch'
+                elif 'infrastructure' in label_name or 'no-version' in label_name:
+                    return 'none'
+        
+        # Check for infrastructure-only override in commit messages
+        commit_text = ' '.join(commits).lower()
+        if any(phrase in commit_text for phrase in [
+            '[no-version]', '[infrastructure]', '[infrastructure-only]',
+            'infrastructure-only', 'no version increment', 'skip version'
+        ]):
+            print("Infrastructure-only override detected in commit messages")
+            return 'none'
+        
+        # Check if this looks like an initial repository setup
+        # Large number of files being added suggests initial setup
+        if len(changed_files) > 30:
+            infrastructure_count = 0
+            source_count = 0
+            
+            for file in changed_files:
+                is_infrastructure = any(re.search(pattern, file, re.IGNORECASE) 
+                                      for pattern in self.infrastructure_patterns)
+                if is_infrastructure or file in ['.gitignore', 'README.md', 'CHANGES.md', 'features.md']:
+                    infrastructure_count += 1
+                else:
+                    source_count += 1
+            
+            # If >70% of files are infrastructure/docs, treat as infrastructure-only
+            if infrastructure_count > 0 and (infrastructure_count / len(changed_files)) > 0.7:
+                print(f"Initial setup detected: {infrastructure_count} infrastructure files, {source_count} source files")
+                print("Treating as infrastructure-only change - no version increment needed")
+                return 'none'
         
         # Check if changes are infrastructure-only
         infrastructure_only = True
