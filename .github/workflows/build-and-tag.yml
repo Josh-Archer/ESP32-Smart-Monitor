@@ -217,6 +217,7 @@ jobs:
           echo "mqtt_flash_formatted=$(format_bytes ${{ steps.build.outputs.mqtt_flash_bytes }})" >> $GITHUB_OUTPUT
           echo "web_flash_formatted=$(format_bytes ${{ steps.build.outputs.web_flash_bytes }})" >> $GITHUB_OUTPUT
           echo "both_flash_formatted=$(format_bytes ${{ steps.build.outputs.both_flash_bytes }})" >> $GITHUB_OUTPUT
+      - name: Create or update build report comment
         if: github.event_name == 'pull_request'
         uses: peter-evans/create-or-update-comment@v4
         with:
