@@ -1,4 +1,4 @@
-#include "src/credentials.h"
+#include "credentials.h"
 
 // INSTRUCTIONS:
 // 1. Copy this file to src/credentials.cpp

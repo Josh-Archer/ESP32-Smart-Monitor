@@ -46,12 +46,11 @@ libraries/*
 
 # Sensitive configuration (credentials should NEVER be committed)
 src/credentials.cpp
-src/credentials.h
 
 # Environment specific files
 .env
 secrets.h
-credentials.h
+/credentials.h
 
 # Backup files
 *.bak
