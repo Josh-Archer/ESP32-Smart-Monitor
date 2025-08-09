@@ -115,7 +115,7 @@ Once configured, these entities automatically appear in Home Assistant:
 
 **Controls:**
 - **Alert Control Switch** - Enable/disable notifications remotely
-- **Reboot Button** - Safely reboot the device from Home Assistant
+- **Reboot Button** - Safely reboot the device from Home Assistant (stores request in NVS/Preferences)
 
 **Features:**
 - **Availability Monitoring** - Home Assistant tracks device online/offline status
