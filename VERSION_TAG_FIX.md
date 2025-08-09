@@ -64,4 +64,23 @@ The existing `scripts/version_manager.py` already has logic to prevent this issu
 2. Tags are created AFTER the config.cpp is updated
 3. Tag names match the version in config.cpp
 
+## Apply to Remote
+
+After merging this PR, run the script to apply tag fixes to the remote repository:
+
+```bash
+./scripts/apply_tag_fixes.sh
+```
+
+This will:
+1. Delete the old mismatched v2.7.0 tag from remote
+2. Push the corrected v2.6.0 and v2.7.0 tags
+
+## Files Changed
+
+- `.github/workflows/build-and-tag.yml` - Enhanced workflow to prevent future tag mismatches
+- `scripts/fix_version_tags.sh` - Verification script for tag alignment
+- `scripts/apply_tag_fixes.sh` - Script to apply fixes to remote repository
+- `VERSION_TAG_FIX.md` - This documentation
+
 This fix resolves issue #25.
