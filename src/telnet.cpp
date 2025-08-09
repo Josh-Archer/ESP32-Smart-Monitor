@@ -2,6 +2,7 @@
 #include <time.h>
 #include "config.h"
 #include "web_server.h" // For addToTelnetLogBuffer
+#include "mqtt_manager.h" // For publishTelnetLog
 #include <stdarg.h>
 
 // Telnet server for remote serial monitoring
@@ -53,9 +54,15 @@ void telnetPrintf(const char* format, ...) {
   }
   
   // Add to web log buffer for streaming (remove trailing \r\n for cleaner web display)
-  String logEntry = String(buffer);
+  String logEntry;
+  logEntry.reserve(600);
+  logEntry = String(buffer);
   logEntry.trim(); // Remove trailing whitespace
   if (logEntry.length() > 0) {
     addToTelnetLogBuffer(logEntry);
+    
+    // Publish to MQTT for Home Assistant (with timestamp)
+    String mqttLogEntry = String(ts) + " " + logEntry;
+    publishTelnetLog(mqttLogEntry);
   }
 }

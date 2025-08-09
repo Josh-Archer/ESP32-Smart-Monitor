@@ -3,7 +3,9 @@
 #include "telnet.h"
 #include "system_utils.h"
 #include "dns_manager.h"
+#include "mqtt_manager.h"
 #include <WebServer.h>
+#include <ArduinoJson.h>
 
 WebServer server(80);
 
@@ -30,12 +32,9 @@ static void handleOptions() {
 
 void handleRoot() {
   // Minimal HTML landing page (UI is hosted externally)
-  String html = "<html><head><title>" + String(deviceName) + "</title></head>";
-  html += "<body><h1>" + String(deviceName) + "</h1>";
-  html += "<p><a href='/status'>Status JSON</a> | <a href='/reboot'>Reboot</a></p>";
-  html += "<script>fetch('/status').then(r=>r.json()).then(d=>document.body.innerHTML+='<p>Version: '+d.version+'</p>');</script>";
-  html += "</body></html>";
-  server.send(200, "text/html", html);
+  // Minified HTML for landing page
+  const char html[] PROGMEM = "<html><head><title>ESP32</title></head><body><h1>ESP32</h1><p><a href='/status'>Status JSON</a> | <a href='/reboot'>Reboot</a></p><script>fetch('/status').then(r=>r.json()).then(d=>document.body.innerHTML+='<p>Version: '+d.version+'</p>');</script></body></html>";
+  server.send(200, "text/html", FPSTR(html));
 }
 
 void handleReboot() {
@@ -51,57 +50,54 @@ void handleReboot() {
 }
 
 void handleStatus() {
-  String json = "{";
-  json += "\"device\":\"" + String(deviceName) + "\",";
-  json += "\"version\":\"" + String(firmwareVersion) + "\",";
-  json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
-  json += "\"uptime\":" + String(millis()) + ",";
-  json += "\"wifi_rssi\":" + String(WiFi.RSSI()) + ",";
-  json += "\"free_heap\":" + String(ESP.getFreeHeap()) + ",";
-  json += "\"wifi_connected\":" + String(WiFi.isConnected() ? "true" : "false") + ",";
-  
-  // DNS server information
-  json += "\"primary_dns\":\"" + primaryDNS.toString() + "\",";
-  json += "\"fallback_dns\":\"" + fallbackDNS.toString() + "\",";
-  
-  // Current DNS servers in use
-  json += "\"current_dns1\":\"" + WiFi.dnsIP(0).toString() + "\",";
-  json += "\"current_dns2\":\"" + WiFi.dnsIP(1).toString() + "\",";
-  
-  // Heartbeat information
-  json += "\"last_heartbeat_success\":" + String(lastSuccessfulHeartbeat) + ",";
-  json += "\"last_heartbeat_code\":" + String(lastHeartbeatResponseCode) + ",";
-  json += "\"heartbeat_endpoint\":\"" + String(apiEndpoint) + "\",";
-  
-  // Calculate time since last successful heartbeat in seconds
+  // Build JSON using ArduinoJson to avoid String concatenation fragmentation
+  JsonDocument doc;
+  doc["device"] = deviceName;
+  doc["version"] = firmwareVersion;
+  doc["ip"] = WiFi.localIP().toString();
+  doc["uptime"] = millis();
+  doc["wifi_rssi"] = WiFi.RSSI();
+  doc["free_heap"] = ESP.getFreeHeap();
+  doc["wifi_connected"] = WiFi.isConnected();
+
+  // DNS
+  doc["primary_dns"] = primaryDNS.toString();
+  doc["fallback_dns"] = fallbackDNS.toString();
+  doc["current_dns1"] = WiFi.dnsIP(0).toString();
+  doc["current_dns2"] = WiFi.dnsIP(1).toString();
+
+  // Heartbeat
+  doc["last_heartbeat_success"] = lastSuccessfulHeartbeat;
+  doc["last_heartbeat_code"] = lastHeartbeatResponseCode;
+  doc["heartbeat_endpoint"] = apiEndpoint;
+
   unsigned long timeSinceLastSuccessMs = millis() - lastSuccessfulHeartbeat;
-  unsigned long timeSinceLastSuccessSeconds = timeSinceLastSuccessMs / 1000;
-  json += "\"time_since_last_success_ms\":" + String(timeSinceLastSuccessMs) + ",";
-  json += "\"time_since_last_success_seconds\":" + String(timeSinceLastSuccessSeconds) + ",";
-  
-  // Add formatted timestamp if we have a successful heartbeat
+  doc["time_since_last_success_ms"] = timeSinceLastSuccessMs;
+  doc["time_since_last_success_seconds"] = timeSinceLastSuccessMs / 1000;
+
   if (lastSuccessfulHeartbeat > 0) {
-    unsigned long uptimeAtHeartbeat = lastSuccessfulHeartbeat;
-    json += "\"last_heartbeat_uptime\":" + String(uptimeAtHeartbeat) + ",";
-    json += "\"last_heartbeat_uptime_formatted\":\"" + formatUptime(uptimeAtHeartbeat) + "\",";
+    doc["last_heartbeat_uptime"] = lastSuccessfulHeartbeat;
+    doc["last_heartbeat_uptime_formatted"] = formatUptime(lastSuccessfulHeartbeat);
   } else {
-    json += "\"last_heartbeat_uptime\":0,";
-    json += "\"last_heartbeat_uptime_formatted\":\"Never\",";
+    doc["last_heartbeat_uptime"] = 0;
+    doc["last_heartbeat_uptime_formatted"] = "Never";
   }
-  
-  // Current timestamp information
-  json += "\"current_uptime\":" + String(millis()) + ",";
-  json += "\"current_uptime_formatted\":\"" + formatUptime(millis()) + "\",";
-  
-  // Alert status information
-  json += "\"alerts_paused\":" + String(areAlertsPaused() ? "true" : "false") + ",";
-  unsigned long timeRemaining = getAlertsPausedTimeRemaining();
-  json += "\"alerts_paused_time_remaining_seconds\":" + String(timeRemaining);
-  
-  json += "}";
-  
+
+  // Current time
+  doc["current_uptime"] = millis();
+  doc["current_uptime_formatted"] = formatUptime(millis());
+
+  // Alerts
+  doc["alerts_paused"] = areAlertsPaused();
+  doc["alerts_paused_time_remaining_seconds"] = getAlertsPausedTimeRemaining();
+
+  // MQTT
+  doc["mqtt_connected"] = isMQTTConnected();
+
+  String out;
+  serializeJson(doc, out);
   addCORS();
-  server.send(200, "application/json", json);
+  server.send(200, "application/json", out);
 }
 
 void handleAlertPause() {
@@ -178,7 +174,7 @@ void handleTelnetOutput() {
 // Helper function to escape strings for JSON
 String escapeJsonString(const String& input) {
   String result;
-  result.reserve(input.length() + 20); // Reserve some extra space
+  result.reserve(input.length() + 20);
   
   for (size_t i = 0; i < input.length(); i++) {
     char c = input.charAt(i);

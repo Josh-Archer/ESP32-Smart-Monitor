@@ -15,9 +15,11 @@ function pio-build {
     & $PIO_PATH run 
 }
 
-function pio-upload-ota { 
-    Write-Host "Uploading firmware via OTA to $DEVICE_HOSTNAME..." -ForegroundColor Green
-    & $PIO_PATH run --target upload --upload-port $DEVICE_HOSTNAME
+function pio-upload-ota {
+    param([string]$Host)
+    $target = if ($Host) { $Host } else { $DEVICE_HOSTNAME }
+    Write-Host "Uploading firmware via OTA to $target..." -ForegroundColor Green
+    & $PIO_PATH run --target upload --upload-port $target
 }
 
 function pio-upload-ota-hostname { 
@@ -35,9 +37,26 @@ function pio-monitor {
     & $PIO_PATH device monitor 
 }
 
-function pio-upload-serial { 
-    Write-Host "Uploading firmware via serial..." -ForegroundColor Green
-    & $PIO_PATH run --target upload 
+function pio-upload-serial {
+    param([string]$Port)
+    # Try to auto-detect ESP32-C3 serial port if not provided
+    if (-not $Port) {
+        try {
+            $dev = Get-CimInstance Win32_SerialPort | Where-Object { $_.PNPDeviceID -match 'VID_303A&PID_1001' } | Select-Object -First 1
+            if (-not $dev) { $dev = Get-CimInstance Win32_SerialPort | Select-Object -First 1 }
+            $Port = $dev.DeviceID
+        } catch {
+            Write-Host "Could not auto-detect serial port. Specify with: pio-upload-serial -Port COMx" -ForegroundColor Yellow
+        }
+    }
+    $envName = "esp32-c3-devkitm-1-serial"
+    if ($Port) {
+        Write-Host "Uploading firmware via serial on $Port..." -ForegroundColor Green
+        & $PIO_PATH run -e $envName --target upload --upload-port $Port
+    } else {
+        Write-Host "Uploading firmware via serial (esptool) without explicit port..." -ForegroundColor Green
+        & $PIO_PATH run -e $envName --target upload
+    }
 }
 
 # Telnet monitoring

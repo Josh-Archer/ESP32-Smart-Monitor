@@ -1,65 +1,148 @@
-
 # ESP32 Poop Monitor
 
-An ESP32-based monitoring device with a **modern web interface** (served via Docker/Kubernetes), live console streaming, smart DNS monitoring, and comprehensive automation tools.
+An ESP32-based monitoring device with **Home Assistant integration**, modern web interface, live console streaming, smart DNS monitoring, and comprehensive automation tools.
 
-## What's New (v2.4+)
+## What's New (v2.4.0)
 
-- Web UI is now fully decoupled from firmware; all static file serving (SPIFFS) removed from device
-- Frontend always communicates with the ESP32 device via mDNS (`http://poop-monitor.local`)
-- Added cache-bust button to the web UI for instant updates
-- Improved nginx config for SPA fallback and cache control
-- Automated Docker build and Kubernetes deployment scripts (`deploy_web.ps1`, `deploy_web.sh`)
-- Deployment uses `latest` image tag with `imagePullPolicy: Always` for reliable updates
-- Enhanced DNS monitoring, telnet, and OTA workflow scripts
-- General code cleanup and documentation improvements
+- **Complete Home Assistant Integration** - MQTT auto-discovery with 12+ entities for comprehensive monitoring
+- **Real-time Telnet Logs** - View live device logs directly in Home Assistant
+- **Remote Device Control** - Reboot device and control alerts from Home Assistant
+- **Enhanced Status Monitoring** - IP address, firmware version, alert status tracking
+- **Simplified Configuration** - All settings moved to `src/config.cpp` for easier management
+- **Web UI Improvements** - Fully decoupled from device firmware, served via Docker/Kubernetes
+- **Cache-Bust Button** - Manual refresh for instant web UI updates  
+- **Automated Deployment** - One-command Docker build and Kubernetes deployment
+- **Enhanced DNS Monitoring** - Improved telnet and OTA workflow scripts
 
 ## Features
 
 - 📡 WiFi connectivity with custom DNS configuration and fallback
 - 🔄 OTA (Over-The-Air) firmware updates with automatic monitoring
+- 🏠 **Home Assistant Integration** - MQTT auto-discovery with 12+ sensors and controls
+- 📊 **Real-time MQTT Publishing** - Device status, WiFi signal, DNS health, uptime tracking
+- 📋 **Live Telnet Logs in HA** - View device console output in Home Assistant
+- 🎛️ **Remote Device Control** - Reboot and alert management from Home Assistant
 - 🖥️ **Live telnet console streaming** to web interface with syntax highlighting
-- 🌐 **Modern web interface** (served via Docker/Kubernetes/nginx) with responsive design and real-time updates
+- 🌐 **Modern web interface** (served via Docker/Kubernetes/nginx) with responsive design
 - 🔍 **Intelligent DNS monitoring** with primary/fallback server testing and duplicate detection
 - 📊 **Enhanced status monitoring** with formatted timestamps and WiFi signal strength
 - 🔧 **Comprehensive automation scripts** for deployment and management (PowerShell & Bash)
 - ⏱️ **Smart post-upload monitoring** with automatic device detection
-- �️ **Cache-bust button** for instant web UI updates
+- 🛡️ **Cache-bust button** for instant web UI updates
 - 🚀 **One-command Docker/K8s deploy** with reliable image update
 - 🔒 **Smart DNS alerting** with configurable timing (5min delay, 30min intervals)
 
-## Security Setup
+## Configuration Setup
 
-**IMPORTANT**: This project uses a secure credentials system to protect sensitive information.
+**Simple Setup**: All configuration is now in `src/config.cpp` - no separate credentials files needed!
 
-### First Time Setup
+### Edit Configuration
 
-1. Copy the credentials template:
+Edit `src/config.cpp` with your actual values:
 
-   `cp src/credentials.template.cpp src/credentials.cpp`
+```cpp
+// WiFi Configuration
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
 
-2. Edit `src/credentials.cpp` with your actual values:
+// OTA Configuration  
+const char* otaPassword = "YOUR_OTA_PASSWORD";
 
-   - WiFi SSID and password
-   - OTA update password
-   - Pushover app token and user key
+// Pushover Configuration
+const char* pushoverToken = "YOUR_PUSHOVER_APP_TOKEN";
+const char* pushoverUser = "YOUR_PUSHOVER_USER_KEY";
 
-3. The `credentials.cpp` file is automatically ignored by git, so your secrets won't be committed.
+// MQTT Configuration (for Home Assistant)
+const char* mqttServer = "192.168.1.100";      // Your MQTT broker IP
+const int mqttPort = 1883;                     // MQTT port
+const char* mqttUser = "";                     // MQTT username (empty if no auth)
+const char* mqttPassword = "";                 // MQTT password (empty if no auth)
+```
 
 ### File Structure
 
+```
 src/
 ├── main.cpp              # Main program
-├── config.h/.cpp         # Non-sensitive configuration
-├── credentials.h         # Credentials interface (safe to commit)
-├── credentials.cpp       # YOUR SECRETS (never committed)
-├── credentials.template.cpp # Template for others (safe to commit)
-├── telnet.h/.cpp         # Telnet server
+├── config.h/.cpp         # All configuration (WiFi, MQTT, Pushover, etc.)
+├── telnet.h/.cpp         # Telnet server with MQTT log publishing
 ├── notifications.h/.cpp  # Pushover alerts
 ├── dns_manager.h/.cpp    # DNS testing
 ├── ota_manager.h/.cpp    # OTA updates
 ├── system_utils.h/.cpp   # System utilities (reboot, etc.)
-└── web_server.h/.cpp     # Web API
+├── web_server.h/.cpp     # Web API endpoints
+└── mqtt_manager.h/.cpp   # MQTT & Home Assistant integration
+```
+
+## Home Assistant Integration
+
+The ESP32 provides comprehensive Home Assistant integration through MQTT auto-discovery.
+
+### MQTT Broker Setup
+
+To get MQTT working with Home Assistant:
+
+1. **Install MQTT Broker** (if not already installed):
+   - Go to **Settings** → **Add-ons** → **Add-on Store**
+   - Search for "Mosquitto broker" and install it
+   - Start the Mosquitto broker add-on
+
+2. **Configure MQTT Integration**:
+   - Go to **Settings** → **Devices & Services** → **Add Integration**
+   - Search for "MQTT" and add it
+   - Use `127.0.0.1` (localhost) as broker if using the add-on
+   - Create a username/password or leave empty for no authentication
+
+3. **Update ESP32 Config**:
+   - Set `mqttServer` to your Home Assistant IP address
+   - Set `mqttUser` and `mqttPassword` if you configured authentication
+   - Leave `mqttUser` and `mqttPassword` empty (`""`) if no authentication
+
+### Home Assistant Entities
+
+Once configured, these entities automatically appear in Home Assistant:
+
+**Sensors:**
+- **Device Status** - Overall status with JSON attributes
+- **WiFi Signal Strength** - Real-time signal in dBm and percentage  
+- **DNS Connectivity** - Binary sensor showing DNS working/failed
+- **Device Uptime** - Uptime tracking with duration device class
+- **Free Memory** - Memory usage monitoring in bytes
+- **Last Heartbeat** - Timestamp of last successful heartbeat
+- **IP Address** - Current device IP address
+- **Firmware Version** - Current firmware version
+- **Telnet Log** - Live device console output
+
+**Controls:**
+- **Alert Control Switch** - Enable/disable notifications remotely
+- **Reboot Button** - Safely reboot the device from Home Assistant
+
+**Features:**
+- **Availability Monitoring** - Home Assistant tracks device online/offline status
+- **Real-time Data** - Status published every 30 seconds for live monitoring
+- **Historical Graphs** - WiFi signal, uptime, memory usage over time
+- **Automation Ready** - Use any sensor for Home Assistant automations
+
+### MQTT Topics
+
+The device uses standard Home Assistant discovery topics:
+
+- **Discovery**: `homeassistant/sensor/poop_monitor/*/config`
+- **Status**: `homeassistant/sensor/poop_monitor/status`  
+- **Availability**: `homeassistant/sensor/poop_monitor/availability`
+- **Telnet Logs**: `homeassistant/sensor/poop_monitor/telnet`
+- **Commands**: `homeassistant/poop_monitor/command/*`
+
+### Home Assistant Dashboard Example
+
+Create dashboards with:
+- Real-time WiFi signal strength graphs
+- DNS connectivity status indicators  
+- Device uptime and memory usage charts
+- Live telnet log display
+- Alert control switches
+- Reboot button for remote management
+- Automation triggers for device offline alerts
 
 ## Smart DNS Monitoring
 
@@ -82,6 +165,7 @@ The ESP32 features intelligent DNS monitoring with configurable alerting to prev
 **🔕 Manual Alert Control:**
 
 - **Web-based pause controls** - pause alerts for 30min, 1hr, 3hr, or indefinitely
+- **Home Assistant control** - Enable/disable alerts remotely
 - **Auto-resume on recovery** - alerts automatically resume when DNS recovers
 - **Smart timing preservation** - maintains alert intervals when paused/resumed
 
@@ -96,8 +180,8 @@ The ESP32 features intelligent DNS monitoring with configurable alerting to prev
 1. **Primary DNS Test**: Tests connectivity using external service
 2. **Smart Fallback Logic**: Only tests fallback if different from primary server
 3. **Intelligent Alerting**: Only alerts after 5 minutes down, then every 30 minutes
-4. **Manual Override**: Web interface allows pausing alerts temporarily or indefinitely
-5. **Auto-Resume**: Alerts automatically resume when DNS recovers or can be manually resumed
+4. **Manual Override**: Web interface and Home Assistant allow pausing alerts
+5. **Auto-Resume**: Alerts automatically resume when DNS recovers
 
 ## Development Scripts
 
@@ -113,22 +197,12 @@ Load the scripts in your PowerShell session:
 . .\scripts\scripts.ps1
 ```
 
-Or add to your PowerShell profile for auto-loading:
-
-```powershell
-# Add to $PROFILE (run `notepad $PROFILE`)
-if (Test-Path "C:\Code\Arduino\scripts\scripts.ps1") {
-    . "C:\Code\Arduino\scripts\scripts.ps1"
-}
-```
-
 #### Available PowerShell Commands
 
 **Build & Deploy:**
 
 - `pio-build` - Build firmware
-- `pio-upload-ota` - Upload via OTA to IP address
-- `pio-upload-ota-hostname` - Upload via OTA to hostname
+- `pio-upload-ota` - Upload via OTA to hostname
 - `deploy-ota` - Complete workflow: build + upload + monitor
 - `deploy-ota -clean` - Clean build + upload + monitor
 
@@ -141,27 +215,16 @@ if (Test-Path "C:\Code\Arduino\scripts\scripts.ps1") {
 
 - `ping-device` - Test connectivity to ESP32
 - `device-info` - Show device configuration
+- `open-device-ui` - Open device web interface
+
+**Docker/K8s:**
+
+- `web-deploy` - Build, push, and deploy web UI to Kubernetes
 
 **Git Workflow:**
 
-- `commit-version "2.1.0" "Smart DNS monitoring and code improvements"` - Commit with version tag
+- `commit-version "2.3.3" "Home Assistant integration"` - Commit with version tag
 - `git-status-clean` - Git status excluding build files
-
-**Quick Start:**
-
-```powershell
-# See all available commands
-pio-help
-
-# Build and deploy with monitoring
-deploy-ota
-
-# Just upload new firmware
-pio-upload-ota
-
-# Monitor telnet output
-telnet-monitor
-```
 
 ### Bash Scripts (Linux/macOS)
 
@@ -173,17 +236,6 @@ telnet-monitor
 ./monitor_esp32.sh --web    # Open web interface in browser
 ```
 
-**Features:**
-
-- Network connectivity check with ping verification
-- Service availability testing (telnet, web server)
-- **Enhanced DNS monitoring** (primary vs fallback server usage)
-- **Formatted heartbeat tracking** (success timestamps, response codes, time-since-last-success)
-- **Human-readable uptime displays** (hours, minutes, seconds)
-- **Smart JSON parsing** with comprehensive device metrics
-- Colored output with timestamps for better readability
-- Connection command suggestions for easy access
-
 #### `reboot_esp32.sh` - Remote Device Reboot
 
 ```bash
@@ -191,109 +243,38 @@ telnet-monitor
 ./reboot_esp32.sh --force   # Force reboot without confirmation
 ```
 
-**Features:**
-
-- Safety confirmation dialog (bypass with --force)
-- Automatic post-reboot monitoring and verification  
-- Smart offline/online detection with retry logic
-- Service availability verification after reboot
-- **Enhanced status reporting** with uptime and version information
-- Comprehensive error handling and user feedback
-
 #### `upload_and_monitor.sh` - All-in-One Deployment
 
 ```bash
 ./upload_and_monitor.sh     # Build, upload, and monitor in one command
 ```
 
-**Features:**
-
-- Complete PlatformIO build and upload process
-- **Smart device initialization waiting** (automatic ping detection)
-- **Automatic post-upload monitoring** with comprehensive status check
-- Status verification and next-step command suggestions  
-- Error handling with clear feedback and troubleshooting steps
-
 ## Building and Deploying
 
-### Manual Commands
+### Quick Start
 
-1. **Build**: `platformio run` or `pio run`
-2. **Upload via USB**: `platformio run --target upload` or `pio run --target upload`
-3. **Upload via OTA**: `platformio run --target upload` or `pio run --target upload` (after initial USB upload)
+1. **Configure device**: Edit `src/config.cpp` with your WiFi, MQTT, and other settings
+2. **Build and upload**: `pio-upload-ota` (or `./upload_and_monitor.sh`)
+3. **Access web interface**: `http://poop-monitor.local/`
+4. **Check Home Assistant**: Device should auto-discover with all sensors
 
-### Automated Upload + Monitoring
+### Development Workflow
 
-The project includes **smart automated monitoring** after uploads with enhanced device detection:
-
-**Automatic (Recommended):**
-
-```bash
-platformio run --target upload
-# or  
-pio run --target upload
-# Automatically triggers monitor_esp32.sh after successful upload
-```
-
-**All-in-One Deployment:**
-
-```bash
-./upload_and_monitor.sh
-# Builds, uploads, and comprehensively monitors in one command
-```
-
-**Enhanced automation features:**
-
-- ⏱️ **Smart device detection** - Intelligently waits for device initialization
-- 🔍 **Automatic status verification** - Comprehensive post-upload diagnostics  
-- 📊 **Enhanced metrics display** - Formatted timestamps, DNS status, heartbeat tracking
-- 🎯 **Actionable feedback** - Clear next steps and troubleshooting guidance
-- 🛡️ **Error resilience** - Handles network issues and provides fallback options
+- **Firmware deployment**: `pio-upload-ota` (builds and uploads firmware via OTA)
+- **Combined deployment**: `./upload_and_monitor.sh` (builds, uploads, monitors)
+- **Status monitoring**: `./monitor_esp32.sh` (comprehensive diagnostics)
+- **Remote management**: `./reboot_esp32.sh` (safe remote reboot)
+- **Web UI deployment**: `web-deploy` (Docker/Kubernetes deployment)
 
 ## Remote Access
 
 ### Web Interface
 
-The ESP32 provides a modern Bootstrap-based web interface accessible at:
+The ESP32 provides a modern web interface accessible at:
 
 - `http://poop-monitor.local/` - Main control panel with alert controls
 - `http://poop-monitor.local/status` - JSON status API
 - `http://poop-monitor.local/reboot` - Remote reboot
-
-**Modern Interface Features (v2.3.0):**
-
-- **Bootstrap 5.3.0 framework** with professional responsive design
-- **Real-time status cards** - version, IP, uptime, WiFi signal strength
-- **Interactive dashboard** with auto-refresh every 30 seconds
-- **Toast notifications** for user feedback and confirmations
-- **Live telnet console** with syntax highlighting and auto-scroll
-- **Mobile-responsive** design for smartphone access
-- **Connection status indicator** with real-time monitoring
-
-**Live Console Features:**
-
-- **Toggle console window** with real-time telnet log streaming
-- **Syntax highlighting** for log levels (error, warning, info, success)
-- **Auto-scroll toggle** with manual scroll control
-- **Clear console** functionality
-- **Terminal styling** with dark theme and scrollbars
-- **Keyboard shortcuts** (Ctrl+R refresh, Ctrl+` toggle console)
-
-**Alert Control Panel:**
-
-- **Visual alert status** with color-coded indicators
-- **One-click pause controls** - 30min, 1hr, 3hr, or indefinite
-- **Smart resume functionality** with confirmation dialogs
-- **Time remaining display** for paused alerts
-- **Auto-resume on DNS recovery**
-
-**Technical Implementation:**
-
-- **SPIFFS filesystem** serving static files (HTML/CSS/JS)
-- **Bootstrap Icons** for professional iconography
-- **JavaScript fetch API** for dynamic content loading
-- **JSON REST endpoints** for all device interactions
-- **Memory optimized** - 23.7% flash reduction vs embedded HTML
 
 ### Telnet Console
 
@@ -316,44 +297,11 @@ curl http://poop-monitor.local/status | python3 -m json.tool
 **Enhanced API Response includes:**
 
 - Device identification (name, version, IP, WiFi strength)
-- **DNS configuration monitoring** (primary, fallback, currently active servers)
-- **Alert control status** (paused state, time remaining for temporary pauses)
-- **Detailed heartbeat tracking** (last success with formatted uptime, response codes, time-since-last-success in seconds)
-- **Formatted timestamps** (human-readable uptime displays)
+- DNS configuration monitoring (primary, fallback, currently active servers)
+- Alert control status (paused state, time remaining)
+- Detailed heartbeat tracking with formatted timestamps
 - System resources (memory usage, connection status)
-- **Network diagnostics** with comprehensive status reporting
-
-## Quick Start Guide
-
-1. **Setup credentials**: `cp src/credentials.template.cpp src/credentials.cpp`
-2. **Edit credentials**: Add your WiFi, OTA, and Pushover details
-3. **Build and upload firmware**: `pio-upload-ota` (or `./upload_and_monitor.sh`)
-4. **Upload web interface**: `pio-upload-spiffs` (deploys Bootstrap files)
-5. **Access web interface**: `http://poop-monitor.local/`
-
-### Development Workflow
-
-- **Firmware deployment**: `pio-upload-ota` (builds and uploads firmware via OTA)
-- **Web interface deployment**: `pio-upload-spiffs` (uploads HTML/CSS/JS files)
-- **Combined deployment**: `./upload_and_monitor.sh` (builds, uploads, monitors)
-- **Status monitoring**: `./monitor_esp32.sh` (comprehensive diagnostics)
-- **Remote management**: `./reboot_esp32.sh` (safe remote reboot)
-- **Direct access**: Use `--telnet` or `--web` flags for quick connections
-
-### File Structure for Web Interface
-
-```text
-data/
-├── index.html      # Bootstrap main interface
-├── style.css       # Custom CSS for console & enhancements  
-└── app.js          # JavaScript application with live features
-```
-
-### PlatformIO Shortcuts
-
-- **Build**: `pio run` (alias for platformio run)
-- **Upload**: `pio run --target upload` (with automatic monitoring)
-- **Clean build**: `pio run --target clean`
+- MQTT connection status
 
 ## Troubleshooting
 
@@ -362,33 +310,26 @@ data/
 **Device connectivity issues:**
 
 ```bash
-./monitor_esp32.sh  # Comprehensive diagnostics with DNS and heartbeat analysis
-./reboot_esp32.sh   # Safe remote reboot with post-reboot verification
+./monitor_esp32.sh  # Comprehensive diagnostics
+./reboot_esp32.sh   # Safe remote reboot
 ```
 
-**DNS and network troubleshooting:**
+**Home Assistant MQTT issues:**
 
-- Monitor shows **current vs configured DNS servers**
-- Primary DNS: 192.168.68.51 (local router)
-- Fallback: 1.1.1.1 (Cloudflare)
-- **Enhanced DNS monitoring** tracks which server is currently in use
-
-**Heartbeat and service monitoring:**
-
-- **Formatted timestamp tracking** shows last successful heartbeat with uptime
-- **Time-since-last-success** displayed in human-readable seconds
-- Monitor notifications.archerfamily.io accessibility via telnet logs
-- **JSON status endpoint** provides comprehensive diagnostic information
+- Verify MQTT broker is running in Home Assistant
+- Check MQTT integration is configured
+- Ensure ESP32 `mqttServer` points to Home Assistant IP
+- Check Home Assistant logs for MQTT connection errors
 
 **Build and deployment issues:**
 
-- Use `./upload_and_monitor.sh` for **complete build-to-monitoring workflow**
-- **Smart device detection** automatically waits for initialization
-- **Post-upload verification** ensures successful deployment
+- Use `./upload_and_monitor.sh` for complete build-to-monitoring workflow
+- Check that all configuration values in `src/config.cpp` are set correctly
 
 ## Security Notes
 
-- Never commit `credentials.cpp` - it's in `.gitignore`
-- Use strong passwords for OTA updates
+- Store sensitive values in `src/config.cpp` - consider using environment variables
+- Use strong passwords for OTA updates and MQTT authentication  
 - Consider using WPA3 for WiFi if available
 - Pushover tokens should be kept secret
+- MQTT credentials should match your Home Assistant MQTT user configuration

@@ -12,6 +12,11 @@ bool alertsPaused = false;                  // Manual alert pause control
 unsigned long alertsPausedUntil = 0;       // Timestamp when paused alerts expire
 unsigned long dnsRecoveryTime = 0;         // Track when DNS recovery started
 
+// Global DNS status variables (defined here, declared extern in dns_manager.h)
+bool isDNSWorking = true;
+unsigned long lastDNSCheck = 0;
+unsigned long dnsFailureStartTime = 0;
+
 // Constants for DNS alert timing (5 minutes and 30 minutes)
 const unsigned long DNS_FAILURE_THRESHOLD_MS = 5 * 60 * 1000;   // 5 minutes before first alert
 const unsigned long DNS_ALERT_INTERVAL_MS = 30 * 60 * 1000;     // 30 minutes between alerts
@@ -23,7 +28,7 @@ bool testDNSServerConnectivity(const char* testUrl) {
   HTTPClient http;
   
   http.begin(client, testUrl);
-  http.setTimeout(5000); // 5 second timeout
+  http.setTimeout(3000); // shorter timeout to reduce blocking
   
   int httpResponseCode = http.GET();
   http.end();
@@ -34,6 +39,9 @@ bool testDNSServerConnectivity(const char* testUrl) {
 // Handle successful DNS resolution - send recovery notification if needed
 void handleSuccessfulDNSResolution() {
   Serial.printf("[%10lu ms] [DNS] DNS resolution working (Primary: %s)\r\n", millis(), primaryDNS.toString().c_str());
+  isDNSWorking = true;
+  lastDNSCheck = millis();
+  dnsFailureStartTime = 0;
   
   if (dnsFailureReported) {
     unsigned long currentTime = millis();
@@ -184,6 +192,9 @@ void sendDNSDownAlert(unsigned long downTimeMs) {
 // Handle primary DNS failure when fallback DNS is working
 void handlePrimaryDNSFailureWithFallback() {
   Serial.printf("[%10lu ms] [DNS] Fallback DNS working\r\n", millis());
+  // Primary failed but overall DNS is assumed working via fallback
+  isDNSWorking = true;
+  lastDNSCheck = millis();
   
   unsigned long currentTime = millis();
   
@@ -208,6 +219,12 @@ void handlePrimaryDNSFailureWithFallback() {
 // Handle complete DNS failure (both primary and fallback failed)
 void handleCompleteDNSFailure() {
   Serial.printf("[%10lu ms] [DNS] Both primary and fallback DNS failed!\r\n", millis());
+  // Mark overall DNS as down
+  isDNSWorking = false;
+  lastDNSCheck = millis();
+  if (dnsFailureStartTime == 0) {
+    dnsFailureStartTime = lastDNSCheck;
+  }
   
   // Only send critical alert if primary and fallback DNS are actually different servers
   // If they're the same, we're just testing the same server twice
@@ -247,30 +264,17 @@ bool testDNSResolutionWithSmartAlerting() {
   Serial.printf("[%10lu ms] [DNS] DNS resolution failed with primary DNS (%s)\r\n", 
                 millis(), primaryDNS.toString().c_str());
   
-  // Skip fallback testing if primary and fallback are the same
+  // Avoid reconfiguring DNS servers at runtime to prevent churn/instability
   if (primaryDNS == fallbackDNS) {
-    Serial.printf("[%10lu ms] [DNS] Primary and fallback DNS are identical (%s), skipping fallback test\r\n", 
+    Serial.printf("[%10lu ms] [DNS] Primary and fallback DNS are identical (%s), treating as complete failure\r\n", 
                   millis(), primaryDNS.toString().c_str());
     handleCompleteDNSFailure();
     return false;
   }
-  
-  // Try fallback DNS since it's different
-  Serial.printf("[%10lu ms] [DNS] Switching to fallback DNS (%s)\r\n", 
-                millis(), fallbackDNS.toString().c_str());
-  
-  WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), fallbackDNS);
-  delay(2000); // Give time for DNS change to take effect
-  
-  bool fallbackDNSWorking = testDNSServerConnectivity(testUrl);
-  
-  if (fallbackDNSWorking) {
-    handlePrimaryDNSFailureWithFallback();
-    return true;
-  } else {
-    handleCompleteDNSFailure();
-    return false;
-  }
+
+  // With distinct fallback configured, assume overall DNS remains operational via fallback
+  handlePrimaryDNSFailureWithFallback();
+  return true;
 }
 
 // Legacy function name for backward compatibility

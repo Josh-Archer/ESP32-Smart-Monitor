@@ -25,4 +25,10 @@ extern const char* pushoverToken;
 extern const char* pushoverUser;
 extern const char* pushoverApiUrl;
 
+// MQTT Configuration
+extern const char* mqttServer;
+extern const int mqttPort;
+extern const char* mqttUser;
+extern const char* mqttPassword;
+
 #endif
