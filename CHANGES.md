@@ -1,5 +1,74 @@
 # Recent Changes Summary
 
+## Complete Home Assistant Integration (v2.4.0)
+
+Major release bringing comprehensive Home Assistant integration with MQTT auto-discovery, enhanced device control, and simplified configuration management.
+
+**MQTT & Home Assistant Features**:
+
+- **Home Assistant Auto-Discovery** - Device automatically appears with 12+ entities
+- **Real-time Status Publishing** - Device status published every 30 seconds
+- **Live Telnet Logs** - View device console output directly in Home Assistant
+- **Remote Device Control** - Reboot device and manage alerts from Home Assistant
+- **Comprehensive Sensor Data** - WiFi signal, DNS status, uptime, memory, heartbeat, IP, firmware version
+- **Availability Monitoring** - Home Assistant tracks online/offline status for alerting
+- **Secure MQTT Connection** - Username/password authentication with robust reconnection
+
+**Enhanced Home Assistant Entities**:
+
+- **Main Status Sensor** - Overall device status with JSON attributes
+- **WiFi Signal Strength** - Real-time signal in dBm with percentage
+- **DNS Connectivity** - Binary sensor showing DNS working/failed status  
+- **Device Uptime** - Uptime tracking with duration device class
+- **Free Memory** - Available memory in bytes for resource monitoring
+- **Last Heartbeat** - Timestamp of last successful heartbeat
+- **IP Address** - Current device IP address
+- **Firmware Version** - Current firmware version
+- **Alert Status** - Shows if alerts are currently enabled/disabled
+- **Telnet Log Sensor** - Live device console output
+- **Alert Control Switch** - Enable/disable notifications remotely
+- **Reboot Button** - Safely reboot device from Home Assistant
+
+**Configuration Simplification**:
+
+- **Consolidated Configuration** - All settings moved to `src/config.cpp`
+- **Removed Credentials System** - No more separate credentials files
+- **Simplified Setup** - Single file configuration for all settings
+- **MQTT Configuration** - Built-in MQTT broker settings for Home Assistant
+
+**Web UI & Deployment Improvements**:
+
+- **Web UI Decoupling** - Fully decoupled from firmware, served via Docker/Kubernetes
+- **Direct API Communication** - Frontend always uses device mDNS address
+- **Cache-Bust Button** - Manual refresh for instant UI updates
+- **Nginx Optimization** - Improved cache headers and SPA routing
+- **Docker/K8s Automation** - One-command deployment with reliable image updates
+- **PowerShell Integration** - Enhanced `web-deploy` command
+
+**Technical Enhancements**:
+
+- **MQTT Manager Module** (`src/mqtt_manager.h/cpp`) - Complete MQTT integration
+- **Enhanced Telnet Logging** - Automatic MQTT publishing of console output
+- **Robust Connection Management** - Auto-reconnect with exponential backoff
+- **Memory Efficient** - Optimized JSON generation and buffer management
+- **Command Handling** - MQTT command processing for remote control
+- **Error Handling** - Comprehensive error logging and recovery
+
+**Dependencies Added**:
+
+- `knolleary/PubSubClient@^2.8` - MQTT client library
+- `bblanchon/ArduinoJson@^7.0.4` - JSON handling for discovery
+
+**MQTT Topics**:
+
+- **Discovery**: `homeassistant/sensor/poop_monitor/*/config`
+- **Status**: `homeassistant/sensor/poop_monitor/status`  
+- **Availability**: `homeassistant/sensor/poop_monitor/availability`
+- **Telnet Logs**: `homeassistant/sensor/poop_monitor/telnet`
+- **Commands**: `homeassistant/poop_monitor/command/*`
+
+---
+
 ## Progressive Web App & Bootstrap Interface (v2.3.0)
 
 Complete modernization with Bootstrap CSS framework, live telnet console streaming, and full Progressive Web App (PWA) implementation enabling app-like experience with offline functionality.

@@ -25,7 +25,11 @@ void resumeAlerts();
 bool areAlertsPaused();
 unsigned long getAlertsPausedTimeRemaining();
 
-// Global alert pause state (for web interface access)
+
+// Global DNS status variables (for MQTT and web integration)
+extern bool isDNSWorking;
+extern unsigned long lastDNSCheck;
+extern unsigned long dnsFailureStartTime;
 extern bool alertsPaused;
 extern unsigned long alertsPausedUntil;
 
