@@ -15,4 +15,7 @@ void setRebootFlag(const char* reason = "Remote reboot request");
 // Format uptime milliseconds to human readable string (e.g., "1h 23m 45s")
 String formatUptime(unsigned long uptimeMs);
 
+// Classify WiFi RSSI into human-readable quality
+const char* classifyWiFiSignal(int rssi);
+
 #endif

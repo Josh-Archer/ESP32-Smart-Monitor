@@ -61,3 +61,14 @@ String formatUptime(unsigned long uptimeMs) {
   
   return String(hours) + "h " + String(minutes) + "m " + String(seconds) + "s";
 }
+
+const char* classifyWiFiSignal(int rssi) {
+  if (rssi >= -50) {
+    return "Excellent";
+  } else if (rssi >= -60) {
+    return "Good";
+  } else if (rssi >= -70) {
+    return "Ok";
+  }
+  return "Poor";
+}
