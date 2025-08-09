@@ -1,6 +1,8 @@
 #ifndef MQTT_MANAGER_H
 #define MQTT_MANAGER_H
 
+#ifdef ENABLE_MQTT
+
 #include <WiFiClient.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
@@ -42,4 +44,20 @@ void publishSwitch(const char* object_id, const char* name, const char* command_
 void publishButton(const char* object_id, const char* name, const char* command_topic, 
                    const char* icon = nullptr);
 
-#endif
+#else
+
+// Stub functions when MQTT is disabled
+inline void initializeMQTT() {}
+inline void connectToMQTT() {}
+inline void publishHomeAssistantDiscovery() {}
+inline void publishDeviceStatus() {}
+inline void publishAvailability(bool online = true) {}
+inline void publishTelnetLog(const String& logMessage) {}
+inline void handleMQTTLoop() {}
+inline bool isMQTTConnected() { return false; }
+inline void onMQTTMessage(char* topic, byte* payload, unsigned int length) {}
+inline String getDeviceStatusJSON() { return "{}"; }
+
+#endif // ENABLE_MQTT
+
+#endif // MQTT_MANAGER_H

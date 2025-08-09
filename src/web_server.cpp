@@ -1,9 +1,15 @@
+#ifdef ENABLE_WEBSERVER
+
 #include "web_server.h"
 #include "config.h"
 #include "telnet.h"
 #include "system_utils.h"
 #include "dns_manager.h"
+
+#ifdef ENABLE_MQTT
 #include "mqtt_manager.h"
+#endif
+
 #include <WebServer.h>
 #include <ArduinoJson.h>
 
@@ -92,7 +98,11 @@ void handleStatus() {
   doc["alerts_paused_time_remaining_seconds"] = getAlertsPausedTimeRemaining();
 
   // MQTT
+#ifdef ENABLE_MQTT
   doc["mqtt_connected"] = isMQTTConnected();
+#else
+  doc["mqtt_connected"] = false;
+#endif
 
   String out;
   serializeJson(doc, out);
@@ -275,3 +285,5 @@ void initWebServer() {
 void handleWebServer() {
   server.handleClient();
 }
+
+#endif // ENABLE_WEBSERVER

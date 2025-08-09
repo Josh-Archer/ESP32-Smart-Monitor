@@ -11,15 +11,46 @@ $PIO_PATH = "$env:USERPROFILE\.platformio\penv\Scripts\platformio.exe"
 
 # PlatformIO Aliases
 function pio-build { 
-    Write-Host "Building ESP32 firmware..." -ForegroundColor Green
-    & $PIO_PATH run 
+    param([string]$Environment = "esp32-c3-devkitm-1")
+    $envDisplayName = switch ($Environment) {
+        "esp32-c3-devkitm-1" { "MQTT-only (default)" }
+        "esp32-c3-devkitm-1-webserver" { "WebServer-only" }
+        "esp32-c3-devkitm-1-both" { "Both MQTT and WebServer" }
+        default { $Environment }
+    }
+    Write-Host "Building ESP32 firmware - $envDisplayName..." -ForegroundColor Green
+    & $PIO_PATH run --environment $Environment
+}
+
+function pio-build-mqtt { 
+    Write-Host "Building ESP32 firmware - MQTT-only (smallest flash usage)..." -ForegroundColor Green
+    & $PIO_PATH run --environment esp32-c3-devkitm-1
+}
+
+function pio-build-webserver { 
+    Write-Host "Building ESP32 firmware - WebServer-only..." -ForegroundColor Green
+    & $PIO_PATH run --environment esp32-c3-devkitm-1-webserver
+}
+
+function pio-build-both { 
+    Write-Host "Building ESP32 firmware - Full features (MQTT + WebServer)..." -ForegroundColor Green
+    & $PIO_PATH run --environment esp32-c3-devkitm-1-both
 }
 
 function pio-upload-ota {
-    param([string]$Host)
-    $target = if ($Host) { $Host } else { $DEVICE_HOSTNAME }
-    Write-Host "Uploading firmware via OTA to $target..." -ForegroundColor Green
-    & $PIO_PATH run --target upload --upload-port $target
+    param(
+        [string]$TargetHost,
+        [string]$Environment = "esp32-c3-devkitm-1"
+    )
+    $target = if ($TargetHost) { $TargetHost } else { $DEVICE_HOSTNAME }
+    $envDisplayName = switch ($Environment) {
+        "esp32-c3-devkitm-1" { "MQTT-only" }
+        "esp32-c3-devkitm-1-webserver" { "WebServer-only" }
+        "esp32-c3-devkitm-1-both" { "Both MQTT and WebServer" }
+        default { $Environment }
+    }
+    Write-Host "Uploading firmware via OTA to $target - $envDisplayName..." -ForegroundColor Green
+    & $PIO_PATH run --environment $Environment --target upload --upload-port $target
 }
 
 function pio-upload-ota-hostname { 
@@ -171,7 +202,10 @@ function commit-version {
 
 # Development workflow
 function deploy-ota {
-    param([switch]$clean)
+    param(
+        [switch]$clean,
+        [string]$Environment = "esp32-c3-devkitm-1"
+    )
     
     if ($clean) {
         Write-Host "Clean build and OTA deployment..." -ForegroundColor Green
@@ -179,9 +213,9 @@ function deploy-ota {
     }
     
     Write-Host "Building and deploying via OTA..." -ForegroundColor Green
-    pio-build
+    pio-build -Environment $Environment
     if ($LASTEXITCODE -eq 0) {
-        pio-upload-ota
+        pio-upload-ota -Environment $Environment
         if ($LASTEXITCODE -eq 0) {
             Write-Host "OTA successful." -ForegroundColor Green
             # Then connect to telnet
@@ -197,11 +231,14 @@ function pio-help {
     Write-Host "ESP32 Poop Monitor - Available Commands:" -ForegroundColor Green
     Write-Host ""
     Write-Host "Build Commands:" -ForegroundColor Yellow
-    Write-Host "  pio-build               Build firmware"
+    Write-Host "  pio-build               Build firmware (default: MQTT-only)"
+    Write-Host "  pio-build-mqtt          Build MQTT-only (smallest flash usage)" 
+    Write-Host "  pio-build-webserver     Build WebServer-only"
+    Write-Host "  pio-build-both          Build with both MQTT and WebServer"
     Write-Host "  pio-clean               Clean build artifacts"
     Write-Host ""
     Write-Host "Upload Commands:" -ForegroundColor Yellow  
-    Write-Host "  pio-upload-ota          Upload via OTA (mDNS hostname)"
+    Write-Host "  pio-upload-ota          Upload via OTA (default: MQTT-only)"
     Write-Host "  pio-upload-ota-hostname Upload via OTA (explicit hostname)"
     Write-Host "  pio-upload-serial       Upload via serial cable"
     Write-Host ""

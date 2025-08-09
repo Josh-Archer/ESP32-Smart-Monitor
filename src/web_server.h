@@ -1,6 +1,8 @@
 #ifndef WEB_SERVER_H
 #define WEB_SERVER_H
 
+#ifdef ENABLE_WEBSERVER
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -28,4 +30,13 @@ void handleTelnetOutput();
 String escapeJsonString(const String& input);
 void addToTelnetLogBuffer(const String& logEntry);
 
-#endif
+#else
+
+// Stub functions when webserver is disabled
+inline void initWebServer() {}
+inline void handleWebServer() {}
+inline void addToTelnetLogBuffer(const String& logEntry) {}
+
+#endif // ENABLE_WEBSERVER
+
+#endif // WEB_SERVER_H
