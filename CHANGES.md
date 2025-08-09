@@ -297,7 +297,7 @@ This release introduces smart DNS monitoring with configurable timing, improved 
 **NEW MODULE**: `src/system_utils.h/cpp`
 
 - **Safe Device Reboots**: `rebootDevice()` with logging and delay
-- **Remote Reboot Flags**: `setRebootFlag()` for web-triggered reboots
+- **Remote Reboot Flags**: `setRebootFlag()` uses NVS/Preferences for web-triggered reboots
 - **Uptime Formatting**: `formatUptime()` utility for consistent time displays
 - **Persistent Logging**: Reboot reasons stored in preferences
 

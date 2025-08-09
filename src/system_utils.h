@@ -6,7 +6,7 @@
 // Reboot the ESP32 with optional delay and message
 void rebootDevice(unsigned long delayMs = 3000, const char* reason = "Manual reboot");
 
-// Check if a reboot was requested via file flag
+// Check if a reboot was requested via flag in NVS (Preferences)
 bool checkRebootFlag();
 
 // Set a reboot flag (for remote reboot requests)
