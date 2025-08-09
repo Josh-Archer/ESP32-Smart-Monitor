@@ -1,3 +1,7 @@
+# Milestone Assignment Guidance
+
+- When opening a pull request for an issue, always assign the milestone from the issue to the pull request, if it exists.
+
 # Merge Conflict Checking Guidance
 
 - Before committing or opening a pull request, always check for merge conflicts with the 'main' branch. If conflicts exist, attempt to resolve them or notify the user for manual intervention.
