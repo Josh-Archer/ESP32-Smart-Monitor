@@ -78,8 +78,44 @@ jobs:
         run: |
           VERSION=$(sed -n 's/^const char\* firmwareVersion = "\(.*\)";/\1/p' src/config.cpp)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Check for source code changes
+        id: check_changes
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          # Get the list of changed files in this push
+          # For merge commits, compare with the first parent to get all changes from the merged branch
+          if [ $(git rev-list --count ${{ github.event.before }}..${{ github.sha }}) -gt 1 ]; then
+            # Multiple commits, likely a merge - check all files changed
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }})
+          else
+            # Single commit - check files changed in this commit
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+          fi
+          
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          
+          # Define source code paths that should trigger tagging
+          SOURCE_PATHS="^(src/|data/|web/|platformio\.ini$)"
+          
+          # Check if any changed files match source code paths
+          HAS_SOURCE_CHANGES=false
+          while IFS= read -r file; do
+            if echo "$file" | grep -qE "$SOURCE_PATHS"; then
+              echo "Source code file changed: $file"
+              HAS_SOURCE_CHANGES=true
+            fi
+          done <<< "$CHANGED_FILES"
+          
+          echo "has_source_changes=$HAS_SOURCE_CHANGES" >> $GITHUB_OUTPUT
+          
+          if [ "$HAS_SOURCE_CHANGES" = "true" ]; then
+            echo "✅ Source code changes detected - will proceed with tagging"
+          else
+            echo "ℹ️ Only infrastructure changes detected - skipping tagging"
+          fi
       - name: Tag commit
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check_changes.outputs.has_source_changes == 'true'
         uses: rickstaa/action-create-tag@v1
         with:
           tag: v${{ steps.get_version.outputs.version }}
