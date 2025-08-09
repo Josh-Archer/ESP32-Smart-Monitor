@@ -51,20 +51,25 @@ jobs:
           FLASH=$(grep -Eo 'Flash:.*' build.log | grep -Eo '[0-9.]+%' | head -1)
           echo "ram=$RAM" >> $GITHUB_OUTPUT
           echo "flash=$FLASH" >> $GITHUB_OUTPUT
+      - name: Find pull request
+        id: pr
+        uses: peter-evans/find-pull-request@v3
+        with:
+          commit: ${{ github.sha }}
       - name: Find existing comment
-        if: github.event_name == 'pull_request'
+        if: steps.pr.outputs.pull-request-number != ''
         id: find-comment
         uses: peter-evans/find-comment@v3
         with:
-          issue-number: ${{ github.event.pull_request.number }}
+          issue-number: ${{ steps.pr.outputs.pull-request-number }}
           comment-author: 'github-actions[bot]'
           body-includes: '**Memory Usage**'
       - name: Comment memory usage
-        if: github.event_name == 'pull_request'
+        if: steps.pr.outputs.pull-request-number != ''
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ github.event.pull_request.number }}
+          issue-number: ${{ steps.pr.outputs.pull-request-number }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           body: |
             **Memory Usage**
