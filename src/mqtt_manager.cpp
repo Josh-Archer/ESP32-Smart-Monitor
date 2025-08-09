@@ -39,17 +39,14 @@ static String getMemoryUsage() {
 }
 
 // Publish all sensor states (not just discovery)
-void publishAllSensors() {
-    // Publish current values for all sensors
-    String statusJson = getDeviceStatusJSON();
-    mqttClient.publish(MQTT_STATUS_TOPIC, statusJson.c_str(), false);
+static void publishMetricsIndividual() {
     // WiFi Signal
     mqttClient.publish("homeassistant/sensor/poop_monitor/wifi_signal", String(WiFi.RSSI()).c_str(), false);
     mqttClient.publish("homeassistant/sensor/poop_monitor/wifi_quality", classifyWiFiSignal(WiFi.RSSI()), false);
     // DNS
     extern bool isDNSWorking;
     mqttClient.publish("homeassistant/sensor/poop_monitor/dns_status", isDNSWorking ? "ON" : "OFF", false);
-    // Uptime
+    // Uptime seconds
     mqttClient.publish("homeassistant/sensor/poop_monitor/uptime", String(millis() / 1000).c_str(), false);
     // Free Memory
     mqttClient.publish("homeassistant/sensor/poop_monitor/memory", getMemoryUsage().c_str(), false);
@@ -60,6 +57,14 @@ void publishAllSensors() {
     // Alerts
     extern bool areAlertsPaused();
     mqttClient.publish("homeassistant/sensor/poop_monitor/alerts", areAlertsPaused() ? "OFF" : "ON", false);
+}
+
+void publishAllSensors() {
+    // Publish consolidated device status JSON
+    String statusJson = getDeviceStatusJSON();
+    mqttClient.publish(MQTT_STATUS_TOPIC, statusJson.c_str(), false);
+    // Also publish individual topics for legacy consumers and debugging visibility
+    publishMetricsIndividual();
 }
 void initializeMQTT() {
     Serial.println("Initializing MQTT...");
@@ -149,13 +154,13 @@ void publishHomeAssistantDiscovery() {
         publishSensor("sensor", "wifi_quality", "WiFi Quality",
                   nullptr, nullptr, "homeassistant/sensor/poop_monitor/wifi_quality", "mdi:wifi");
     
-    // 3. DNS Status
+    // 3. DNS Status (reads from consolidated status topic)
         publishSensor("binary_sensor", "dns", "DNS", 
-                  nullptr, "connectivity", "homeassistant/sensor/poop_monitor/dns_status", "mdi:dns");
+                  nullptr, "connectivity", MQTT_STATUS_TOPIC, "mdi:dns");
     
-    // 4. Uptime
+    // 4. Uptime (reads from consolidated status topic)
         publishSensor("sensor", "uptime", "Uptime", 
-                  "s", "duration", "homeassistant/sensor/poop_monitor/uptime", "mdi:clock");
+                  "s", "duration", MQTT_STATUS_TOPIC, "mdi:clock");
     
     // 5. Memory Usage
         publishSensor("sensor", "free_memory", "Free Memory",
@@ -165,17 +170,17 @@ void publishHomeAssistantDiscovery() {
         publishSensor("sensor", "last_heartbeat", "Last Heartbeat",
                   nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:heart-pulse");
     
-    // 7. IP Address
+    // 7. IP Address (reads from consolidated status topic)
         publishSensor("sensor", "ip_address", "IP Address", 
-                  nullptr, nullptr, "homeassistant/sensor/poop_monitor/ip_address", "mdi:ip");
+                  nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:ip");
     
-    // 8. Firmware Version
+    // 8. Firmware Version (reads from consolidated status topic)
         publishSensor("sensor", "firmware", "Firmware", 
-                  nullptr, nullptr, "homeassistant/sensor/poop_monitor/firmware", "mdi:chip");
+                  nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:chip");
     
-    // 9. Alerts Status
+    // 9. Alerts Status (reads from consolidated status topic)
         publishSensor("binary_sensor", "alerts", "Alerts Enabled", 
-                  nullptr, nullptr, "homeassistant/sensor/poop_monitor/alerts", "mdi:bell");
+                  nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:bell");
     
     // 10. Telnet Log Sensor
         publishSensor("sensor", "telnet_log", "Telnet Log", 
@@ -228,7 +233,7 @@ void publishSensor(const char* component, const char* object_id, const char* nam
     // For status sensor, add value template to extract specific values
     if (strcmp(object_id, "status") == 0) {
         configDoc["json_attributes_topic"] = state_topic;
-        configDoc["value_template"] = "{{ value_json.status | default('unknown') }}";
+        configDoc["value_template"] = "{{ value_json.status | default('online') }}";
     } else if (strcmp(object_id, "wifi_signal") == 0) {
         configDoc["value_template"] = "{{ value | float }}";
     } else if (strcmp(object_id, "wifi_quality") == 0) {
@@ -316,6 +321,9 @@ String getDeviceStatusJSON() {
     statusDoc["total_memory_bytes"] = ESP.getHeapSize();
     statusDoc["free_memory_formatted"] = getMemoryUsage();
     statusDoc["firmware_version"] = firmwareVersion;
+    // Alerts
+    extern bool areAlertsPaused();
+    statusDoc["alerts_paused"] = areAlertsPaused();
     
     // DNS status (using external variables from dns_manager.h)
     extern bool isDNSWorking;
@@ -368,6 +376,7 @@ void handleMQTTLoop() {
     if (now - lastStatusPublish >= STATUS_PUBLISH_INTERVAL) {
         publishDeviceStatus();
         mqttClient.publish("homeassistant/sensor/poop_monitor/memory", getMemoryUsage().c_str(), false);
+        publishMetricsIndividual();
         lastStatusPublish = now;
     }
 }
