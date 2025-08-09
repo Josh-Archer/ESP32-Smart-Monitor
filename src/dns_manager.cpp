@@ -45,33 +45,38 @@ void handleSuccessfulDNSResolution() {
   
   if (dnsFailureReported) {
     unsigned long currentTime = millis();
-    
+
     // Start tracking recovery time if not already tracking
     if (dnsRecoveryTime == 0) {
       dnsRecoveryTime = currentTime;
       Serial.printf("[%10lu ms] [DNS] Started tracking DNS recovery\r\n", currentTime);
     }
-    
+
     // Check if DNS has been stable for the threshold time before sending recovery alert
     unsigned long timeSinceRecovery = currentTime - dnsRecoveryTime;
     if (timeSinceRecovery >= DNS_RECOVERY_THRESHOLD_MS) {
-      // DNS has been stable for 5+ minutes, send recovery notification
+      // DNS has been stable for 5+ minutes, send recovery notification ONCE per instability event
       if (!areAlertsPaused()) {
         String recoveryMessage = "DNS server " + primaryDNS.toString() + " has been stable for " + 
                                 String(timeSinceRecovery / 60000) + " minutes on " + String(deviceName);
         sendPushoverAlert("DNS Recovered", recoveryMessage.c_str(), 0);
         Serial.printf("[%10lu ms] [DNS] Recovery alert sent - DNS stable for %lu minutes\r\n", 
                       currentTime, timeSinceRecovery / 60000);
+        // After sending, reset tracking so we don't send again until next instability
+        resetDNSFailureTracking();
+        // Auto-resume alerts on confirmed recovery
+        if (areAlertsPaused()) {
+          resumeAlerts();
+          Serial.printf("[%10lu ms] [DNS] Auto-resumed alerts due to confirmed DNS recovery\r\n", currentTime);
+        }
       } else {
         Serial.printf("[%10lu ms] [DNS] Recovery alert suppressed - alerts are paused\r\n", currentTime);
-      }
-      
-      resetDNSFailureTracking();
-      
-      // Auto-resume alerts on confirmed recovery
-      if (areAlertsPaused()) {
-        resumeAlerts();
-        Serial.printf("[%10lu ms] [DNS] Auto-resumed alerts due to confirmed DNS recovery\r\n", currentTime);
+        // Still reset tracking so we don't send again until next instability
+        resetDNSFailureTracking();
+        if (areAlertsPaused()) {
+          resumeAlerts();
+          Serial.printf("[%10lu ms] [DNS] Auto-resumed alerts due to confirmed DNS recovery\r\n", currentTime);
+        }
       }
     } else {
       // DNS is working but hasn't been stable long enough yet

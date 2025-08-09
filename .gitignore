@@ -73,3 +73,4 @@ yarn-error.log*
 # Generated gzip assets
 /data/*.gz
 /data/**/*.gz
+credentials.cpp

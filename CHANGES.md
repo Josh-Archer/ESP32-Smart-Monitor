@@ -1,10 +1,15 @@
 # Recent Changes Summary
 
-## Unreleased
+## 2.4.1
 
-- **Fixed Last Heartbeat MQTT state** - Home Assistant now receives a formatted uptime instead of `unknown`.
-- **WiFi Signal Quality Summary** - MQTT publishes human-readable strength (Poor/Ok/Good/Excellent).
-- **Improved Memory Reporting** - Free memory is reported in MB with total capacity (e.g., `10MB/32MB`).
+- **WiFi Signal Quality Summary:** MQTT now publishes a human-readable WiFi quality (Poor/Ok/Good/Excellent) via a new `wifi_quality` entity.
+- **Improved Memory Reporting:** Free memory is now reported as a formatted string (e.g., `10240KB/32768KB`) and as a percentage (`free_memory_percent`), making it easier to monitor memory usage in Home Assistant.
+- **Last Heartbeat MQTT State:** Home Assistant now receives a formatted uptime for the last heartbeat, instead of `unknown`.
+- **Enhanced MQTT Metrics:** More detailed and human-friendly metrics are published for Home Assistant, including new value templates and attributes.
+- **CI/CD Improvements:** Added a GitHub Actions workflow for build and tag automation, including a template for fake credentials to enable CI builds.
+- **Credentials Header:** Added `src/credentials.h` to standardize credential imports and improve CI compatibility.
+- **Bug Fixes:** Fixed JSON escape padding for Unicode, clarified reboot flag storage, and fixed a misencoded emoji in the README.
+- **DNS Recovery Notification Logic:** The DNS recovery notification is now sent only once per instability event. After a recovery notification is sent, tracking is reset so that no further recovery notifications are sent until DNS becomes unstable and recovers again. This prevents repeated recovery notifications for the same stable period.
 
 ## Complete Home Assistant Integration (v2.4.0)
 
