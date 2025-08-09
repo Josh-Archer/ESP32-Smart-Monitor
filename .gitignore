@@ -50,8 +50,6 @@ src/credentials.cpp
 # Environment specific files
 .env
 secrets.h
-/credentials.h
-
 # Backup files
 *.bak
 *.backup
