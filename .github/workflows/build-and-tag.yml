@@ -63,7 +63,7 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-includes: '**ESP32 Firmware Build Report**'
       - name: Update build report comment
-        if: steps.pr.outputs.number != ''
+        if: github.event_name == 'pull_request'
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
