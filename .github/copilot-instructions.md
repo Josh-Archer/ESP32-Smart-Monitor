@@ -1,3 +1,16 @@
+# Milestone Assignment Guidance
+
+- When opening a pull request for an issue, always assign the milestone from the issue to the pull request, if it exists.
+
+# Merge Conflict Checking Guidance
+
+- Before committing or opening a pull request, always check for merge conflicts with the 'main' branch. If conflicts exist, attempt to resolve them or notify the user for manual intervention.
+
+# Branch Naming Guidance for Copilot Coding Agent
+
+- When creating a branch for an issue or PR, always use a descriptive, kebab-case name based on the main feature or fix, e.g., 'feature/add-dns-recovery-alert' or 'bugfix/ota-upload-windows'.
+- Prefer branch names that reflect the issue title or the main change being implemented. Avoid generic names like 'copilot/fix-1'.
+
 # ESP32 Smart Monitor
 
 ESP32-based IoT monitoring device with **Home Assistant integration**, modern web interface, live telnet streaming, smart DNS monitoring, and comprehensive automation tools. The project uses PlatformIO for ESP32 firmware development and Docker/Kubernetes for web interface deployment.
