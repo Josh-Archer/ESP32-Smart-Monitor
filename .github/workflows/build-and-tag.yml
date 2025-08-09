@@ -1,5 +1,4 @@
-name: Build and tag
-
+name: ESP32 Firmware Build and Tag
 on:
   push:
     branches:
@@ -14,7 +13,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  build:
+  build-firmware:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +42,7 @@ jobs:
           const char* MQTT_USER = "";
           const char* MQTT_PASSWORD = "";
           EOF
-      - name: Build
+      - name: Build firmware
         id: build
         run: |
           pio run | tee build.log
@@ -61,8 +60,8 @@ jobs:
         with:
           issue-number: ${{ steps.pr.outputs.number }}
           comment-author: 'github-actions[bot]'
-          body-includes: '**Memory Usage**'
-      - name: Comment memory usage
+          body-includes: '**ESP32 Firmware Build Report**'
+      - name: Update build report comment
         if: steps.pr.outputs.number != ''
         uses: peter-evans/create-or-update-comment@v4
         with:
@@ -70,9 +69,16 @@ jobs:
           issue-number: ${{ steps.pr.outputs.number }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           body: |
-            **Memory Usage**
+            **ESP32 Firmware Build Report**
+            
+            📅 **Latest Build:** ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
+            🔗 **Commit:** [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            
+            **Memory Usage:**
             - Flash: ${{ steps.build.outputs.flash }}
             - RAM: ${{ steps.build.outputs.ram }}
+            
+            *Updated automatically with latest build information*
       - name: Extract version
         id: get_version
         run: |
