@@ -2,7 +2,16 @@
 
 An ESP32-based monitoring device with **Home Assistant integration**, modern web interface, live console streaming, smart DNS monitoring, and comprehensive automation tools.
 
-## What's New (v2.4.0)
+## What's New (v2.6.0)
+
+### 2.6.0 - OTA Rollback Protection
+
+- **🔄 Automatic OTA Rollback** - Firmware automatically rolls back to previous version after 10 consecutive boot failures
+- **📊 Boot Failure Tracking** - Device tracks boot attempts and detects repeated startup failures
+- **🚨 Rollback Notifications** - Pushover alerts sent when automatic rollback is triggered
+- **📝 Enhanced Logging** - Rollback events logged in telnet console with detailed information
+- **🛡️ Firmware Validation** - Successful boots mark firmware as valid to prevent unnecessary rollbacks
+- **🔧 Smart Recovery** - Preserves device functionality even with problematic firmware updates
 
 ### 2.4.1
 
@@ -29,7 +38,8 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 ## Features
 
 - 📡 WiFi connectivity with custom DNS configuration and fallback
-- 🔄 OTA (Over-The-Air) firmware updates with automatic monitoring
+- 🔄 OTA (Over-The-Air) firmware updates with **automatic rollback protection**
+- 🛡️ **Smart Boot Failure Recovery** - Automatic rollback after 10 consecutive boot failures
 - 🏠 **Home Assistant Integration** - MQTT auto-discovery with 12+ sensors and controls
 - 📊 **Real-time MQTT Publishing** - Device status, WiFi signal, DNS health, uptime tracking
 - 📋 **Live Telnet Logs in HA** - View device console output in Home Assistant
@@ -196,6 +206,43 @@ The ESP32 features intelligent DNS monitoring with configurable alerting to prev
 3. **Intelligent Alerting**: Only alerts after 5 minutes down, then every 30 minutes
 4. **Manual Override**: Web interface and Home Assistant allow pausing alerts
 5. **Auto-Resume**: Alerts automatically resume when DNS recovers
+
+## OTA Rollback Protection
+
+The ESP32 Smart Monitor includes robust automatic rollback protection to ensure device reliability even with problematic firmware updates.
+
+### How Rollback Works
+
+1. **Boot Failure Tracking**: Device tracks consecutive boot failures using ESP32's non-volatile storage
+2. **Automatic Triggering**: After 10 consecutive boot failures, rollback is automatically triggered  
+3. **ESP32 Native Rollback**: Uses ESP32's built-in OTA rollback functionality to revert to previous firmware
+4. **Notification System**: Sends high-priority Pushover alert when rollback occurs
+5. **Logging**: All rollback events are logged in telnet console with detailed information
+
+### Rollback Process
+
+**Normal Operation:**
+- Device boots successfully → Firmware marked as valid → Boot failure counter reset
+- Successful operation prevents unnecessary rollbacks
+
+**Failure Recovery:**
+- Boot failure detected → Counter incremented → Logged to console
+- After 10 failures → Rollback triggered → Previous firmware restored
+- Pushover alert sent: "Device experienced 10+ boot failures. Rolling back from firmware vX.X.X to previous version."
+
+### Technical Details
+
+- **Native ESP32 Support**: Uses `esp_ota_mark_app_valid_cancel_rollback()` and `esp_ota_mark_app_invalid_rollback_and_reboot()`
+- **Persistent Storage**: Boot failure count stored in NVS (survives power cycles)
+- **Safe Defaults**: Only triggers on consecutive failures (not random crashes)
+- **Automatic Recovery**: Rollback clears failure counter for fresh start
+
+### Monitoring Rollbacks
+
+- **Telnet Logs**: Real-time rollback status in console output
+- **Pushover Alerts**: High-priority notifications when rollback occurs
+- **MQTT Integration**: Rollback events can be monitored via Home Assistant
+- **Version Tracking**: Device logs firmware version changes for debugging
 
 ## Development Scripts
 

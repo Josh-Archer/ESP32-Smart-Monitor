@@ -37,6 +37,40 @@ void setup() {
     prefsOK = preferences.begin("firmware", false);
   }
   
+  // Check for rollback conditions before proceeding
+  if (checkRollbackCondition()) {
+    Serial.printf("[%10lu ms] [OTA] Boot failure threshold exceeded - triggering rollback\r\n", millis());
+    handleOTARollback();
+    // Will not return if rollback succeeds
+  }
+  
+  // Increment boot failure counter at start of boot
+  Preferences bootPrefs;
+  bootPrefs.begin("ota_rollback", false);
+  int bootFailCount = bootPrefs.getInt("boot_fail_count", 0) + 1;
+  bootPrefs.putInt("boot_fail_count", bootFailCount);
+  bootPrefs.end();
+  
+  Serial.printf("[%10lu ms] [OTA] Boot attempt #%d\r\n", millis(), bootFailCount);
+  
+  // Check if this boot followed a rollback
+  bootPrefs.begin("ota_rollback", true);
+  String lastRollbackFrom = bootPrefs.getString("last_rollback_from", "");
+  unsigned long rollbackTime = bootPrefs.getULong("rollback_time", 0);
+  bootPrefs.end();
+  
+  if (lastRollbackFrom != "" && rollbackTime > 0) {
+    Serial.printf("[%10lu ms] [OTA] *** ROLLBACK RECOVERY DETECTED ***\r\n", millis());
+    Serial.printf("[%10lu ms] [OTA] Rolled back from version: %s\r\n", millis(), lastRollbackFrom.c_str());
+    Serial.printf("[%10lu ms] [OTA] Current version: %s\r\n", millis(), firmwareVersion);
+    
+    // Clear rollback tracking since we've detected it
+    bootPrefs.begin("ota_rollback", false);
+    bootPrefs.remove("last_rollback_from");
+    bootPrefs.remove("rollback_time");
+    bootPrefs.end();
+  }
+  
   if (prefsOK) {
     String lastVersion = preferences.getString("lastVersion", "");
     String currentVersion = String(firmwareVersion);
@@ -106,6 +140,13 @@ void setup() {
   if (checkRebootFlag()) {
     telnetPrintf("[%10lu ms] [SYSTEM] Device rebooted successfully\r\n", millis());
   }
+  
+  // Mark firmware as valid after successful module initialization
+  // This will reset the boot failure counter and prevent rollback
+  markFirmwareValid();
+  
+  Serial.printf("[%10lu ms] [BOOT] Setup completed successfully\r\n", millis());
+  telnetPrintf("[%10lu ms] [BOOT] Setup completed successfully for v%s\r\n", millis(), firmwareVersion);
 }
 
 void loop() {
