@@ -53,23 +53,21 @@ jobs:
           echo "flash=$FLASH" >> $GITHUB_OUTPUT
       - name: Find pull request
         id: pr
-        uses: peter-evans/find-pull-request@v3
-        with:
-          commit: ${{ github.sha }}
+        uses: jwalton/gh-find-current-pr@v1
       - name: Find existing comment
-        if: steps.pr.outputs.pull-request-number != ''
+        if: steps.pr.outputs.number != ''
         id: find-comment
         uses: peter-evans/find-comment@v3
         with:
-          issue-number: ${{ steps.pr.outputs.pull-request-number }}
+          issue-number: ${{ steps.pr.outputs.number }}
           comment-author: 'github-actions[bot]'
           body-includes: '**Memory Usage**'
       - name: Comment memory usage
-        if: steps.pr.outputs.pull-request-number != ''
+        if: steps.pr.outputs.number != ''
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ steps.pr.outputs.pull-request-number }}
+          issue-number: ${{ steps.pr.outputs.number }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           body: |
             **Memory Usage**
