@@ -29,12 +29,12 @@ unsigned long lastStatusPublish = 0;
 const unsigned long MQTT_RECONNECT_INTERVAL = 5000;    // Try to reconnect every 5 seconds
 const unsigned long STATUS_PUBLISH_INTERVAL = 30000;   // Publish status every 30 seconds
 
-// Helper to format memory usage as "freeMB/totalMB"
+// Helper to format memory usage as "freeKB/totalKB"
 static String getMemoryUsage() {
-    float freeMB = ESP.getFreeHeap() / (1024.0 * 1024.0);
-    float totalMB = ESP.getHeapSize() / (1024.0 * 1024.0);
+    float freeKB = ESP.getFreeHeap() / 1024.0;
+    float totalKB = ESP.getHeapSize() / 1024.0;
     char buf[32];
-    snprintf(buf, sizeof(buf), "%.2fMB/%.2fMB", freeMB, totalMB);
+    snprintf(buf, sizeof(buf), "%.0fKB/%.0fKB", freeKB, totalKB);
     return String(buf);
 }
 
@@ -245,7 +245,7 @@ void publishSensor(const char* component, const char* object_id, const char* nam
     } else if (strcmp(object_id, "uptime") == 0) {
         configDoc["value_template"] = "{{ (value_json.uptime_ms / 1000) | round(0) }}";
     } else if (strcmp(object_id, "free_memory") == 0) {
-        configDoc["value_template"] = "{{ value | default('0MB/0MB') }}";
+        configDoc["value_template"] = "{{ value | default('0KB/0KB') }}";
     } else if (strcmp(object_id, "free_memory_percent") == 0) {
         configDoc["value_template"] = "{{ value_json.free_memory_percent | default(0) }}";
     } else if (strcmp(object_id, "last_heartbeat") == 0) {
@@ -317,9 +317,15 @@ String getDeviceStatusJSON() {
     // System info
     statusDoc["uptime_ms"] = millis();
     statusDoc["uptime_formatted"] = formatUptime(millis());
-    statusDoc["free_memory_bytes"] = ESP.getFreeHeap();
-    statusDoc["total_memory_bytes"] = ESP.getHeapSize();
+    statusDoc["free_memory_kb"] = ESP.getFreeHeap() / 1024;
+    statusDoc["total_memory_kb"] = ESP.getHeapSize() / 1024;
     statusDoc["free_memory_formatted"] = getMemoryUsage();
+    // Add free_memory_percent
+    if (ESP.getHeapSize() > 0) {
+        statusDoc["free_memory_percent"] = (ESP.getFreeHeap() * 100) / ESP.getHeapSize();
+    } else {
+        statusDoc["free_memory_percent"] = 0;
+    }
     statusDoc["firmware_version"] = firmwareVersion;
     // Alerts
     extern bool areAlertsPaused();

@@ -4,6 +4,18 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 
 ## What's New (v2.4.0)
 
+### 2.4.1
+
+- **WiFi Signal Quality Summary** - Human-readable WiFi quality (`wifi_quality`) in Home Assistant.
+- **Improved Memory Reporting** - Free memory now shown as both formatted string and percent (`free_memory_percent`).
+- **Last Heartbeat MQTT State** - Home Assistant now receives a formatted uptime for the last heartbeat.
+- **Enhanced MQTT Metrics** - More detailed and human-friendly metrics for Home Assistant.
+- **CI/CD Improvements** - GitHub Actions workflow for build/tag automation and CI credentials template.
+- **Credentials Header** - Added `src/credentials.h` for standardized credential imports.
+- **Bug Fixes** - JSON escape padding, reboot flag storage, and cache-bust emoji.
+
+---
+
 - **Complete Home Assistant Integration** - MQTT auto-discovery with 12+ entities for comprehensive monitoring
 - **Real-time Telnet Logs** - View live device logs directly in Home Assistant
 - **Remote Device Control** - Reboot device and control alerts from Home Assistant
@@ -105,9 +117,11 @@ Once configured, these entities automatically appear in Home Assistant:
 **Sensors:**
 - **Device Status** - Overall status with JSON attributes
 - **WiFi Signal Strength** - Real-time signal in dBm and percentage  
+- **WiFi Quality** - Human-readable WiFi quality (Excellent/Good/Ok/Poor)
 - **DNS Connectivity** - Binary sensor showing DNS working/failed
 - **Device Uptime** - Uptime tracking with duration device class
 - **Free Memory** - Memory usage monitoring in bytes
+- **Free Memory Percent** - Memory usage as a percentage
 - **Last Heartbeat** - Timestamp of last successful heartbeat
 - **IP Address** - Current device IP address
 - **Firmware Version** - Current firmware version
@@ -325,6 +339,11 @@ curl http://poop-monitor.local/status | python3 -m json.tool
 
 - Use `./upload_and_monitor.sh` for complete build-to-monitoring workflow
 - Check that all configuration values in `src/config.cpp` are set correctly
+
+
+## Development & CI
+
+- **GitHub Actions Workflow:** Automated build and tag for releases, with CI credentials template for safe builds.
 
 ## Security Notes
 
