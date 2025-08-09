@@ -192,8 +192,9 @@ String escapeJsonString(const String& input) {
       case '\t': result += "\\t"; break;
       default:
         if (c < 0x20) {
-          result += "\\u";
-          result += String(c, HEX);
+          char buf[7];
+          snprintf(buf, sizeof(buf), "\\u%04X", static_cast<unsigned char>(c));
+          result += buf;
         } else {
           result += c;
         }
