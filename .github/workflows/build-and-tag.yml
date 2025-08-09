@@ -1,19 +1,38 @@
-name: Build and Tag
+name: ESP32 Firmware Build and Tag
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - '**'
+    tags: []
+  pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
 jobs:
-  build:
+  build-firmware:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: n-vr/setup-platformio-action@v1
-      - name: Create fake credentials
+      - name: Create dummy credentials
         run: |
+          cat <<'EOF' > src/credentials.h
+          #pragma once
+          extern const char* WIFI_SSID;
+          extern const char* WIFI_PASSWORD;
+          extern const char* OTA_PASSWORD;
+          extern const char* PUSHOVER_TOKEN;
+          extern const char* PUSHOVER_USER;
+          extern const char* MQTT_USER;
+          extern const char* MQTT_PASSWORD;
+          EOF
           cat <<'EOF' > src/credentials.cpp
           #include "credentials.h"
           const char* WIFI_SSID = "";
@@ -21,9 +40,54 @@ jobs:
           const char* OTA_PASSWORD = "";
           const char* PUSHOVER_TOKEN = "";
           const char* PUSHOVER_USER = "";
-          const char* MQTT_SERVER = "";
-          const int MQTT_PORT = 1883;
           const char* MQTT_USER = "";
           const char* MQTT_PASSWORD = "";
           EOF
-      - uses: karniv00l/platformio-run-action@v1
+      - name: Build firmware
+        id: build
+        run: |
+          pio run | tee build.log
+          RAM=$(grep -Eo 'RAM:.*' build.log | grep -Eo '[0-9.]+%' | head -1)
+          FLASH=$(grep -Eo 'Flash:.*' build.log | grep -Eo '[0-9.]+%' | head -1)
+          echo "ram=$RAM" >> $GITHUB_OUTPUT
+          echo "flash=$FLASH" >> $GITHUB_OUTPUT
+      - name: Find pull request
+        id: pr
+        uses: jwalton/gh-find-current-pr@v1
+      - name: Find existing comment
+        if: steps.pr.outputs.number != ''
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '**ESP32 Firmware Build Report**'
+      - name: Update build report comment
+        if: steps.pr.outputs.number != ''
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          body: |
+            **ESP32 Firmware Build Report**
+            
+            📅 **Latest Build:** ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
+            🔗 **Commit:** [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            
+            **Memory Usage:**
+            - Flash: ${{ steps.build.outputs.flash }}
+            - RAM: ${{ steps.build.outputs.ram }}
+            
+            *Updated automatically with latest build information*
+      - name: Extract version
+        id: get_version
+        run: |
+          VERSION=$(sed -n 's/^const char\* firmwareVersion = "\(.*\)";/\1/p' src/config.cpp)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Tag commit
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: rickstaa/action-create-tag@v1
+        with:
+          tag: v${{ steps.get_version.outputs.version }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
