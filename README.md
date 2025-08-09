@@ -28,7 +28,7 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 - 📊 **Enhanced status monitoring** with formatted timestamps and WiFi signal strength
 - 🔧 **Comprehensive automation scripts** for deployment and management (PowerShell & Bash)
 - ⏱️ **Smart post-upload monitoring** with automatic device detection
-- 🛡️ **Cache-bust button** for instant web UI updates
+- 🧹 **Cache-bust button** for instant web UI updates
 - 🚀 **One-command Docker/K8s deploy** with reliable image update
 - 🔒 **Smart DNS alerting** with configurable timing (5min delay, 30min intervals)
 
@@ -115,7 +115,7 @@ Once configured, these entities automatically appear in Home Assistant:
 
 **Controls:**
 - **Alert Control Switch** - Enable/disable notifications remotely
-- **Reboot Button** - Safely reboot the device from Home Assistant
+- **Reboot Button** - Safely reboot the device from Home Assistant (stores request in NVS/Preferences)
 
 **Features:**
 - **Availability Monitoring** - Home Assistant tracks device online/offline status

@@ -1,5 +1,11 @@
 # Recent Changes Summary
 
+## Unreleased
+
+- **Fixed Last Heartbeat MQTT state** - Home Assistant now receives a formatted uptime instead of `unknown`.
+- **WiFi Signal Quality Summary** - MQTT publishes human-readable strength (Poor/Ok/Good/Excellent).
+- **Improved Memory Reporting** - Free memory is reported in MB with total capacity (e.g., `10MB/32MB`).
+
 ## Complete Home Assistant Integration (v2.4.0)
 
 Major release bringing comprehensive Home Assistant integration with MQTT auto-discovery, enhanced device control, and simplified configuration management.
@@ -297,7 +303,7 @@ This release introduces smart DNS monitoring with configurable timing, improved 
 **NEW MODULE**: `src/system_utils.h/cpp`
 
 - **Safe Device Reboots**: `rebootDevice()` with logging and delay
-- **Remote Reboot Flags**: `setRebootFlag()` for web-triggered reboots
+- **Remote Reboot Flags**: `setRebootFlag()` uses NVS/Preferences for web-triggered reboots
 - **Uptime Formatting**: `formatUptime()` utility for consistent time displays
 - **Persistent Logging**: Reboot reasons stored in preferences
 
