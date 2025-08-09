@@ -192,6 +192,37 @@ function deploy-ota {
      }
  }
 
+# Version Management Functions
+function preview-version {
+    Write-Host "🔍 Previewing version changes..." -ForegroundColor Green
+    python scripts/version_manager.py --dry-run
+}
+
+function update-version {
+    Write-Host "🏷️ Applying smart version increment..." -ForegroundColor Green
+    python scripts/version_manager.py
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✅ Version updated successfully!" -ForegroundColor Green
+        Write-Host "Don't forget to commit the changes." -ForegroundColor Yellow
+    } else {
+        Write-Host "ℹ️ No version increment needed." -ForegroundColor Yellow
+    }
+}
+
+function force-version {
+    param([string]$Version)
+    if (-not $Version) {
+        Write-Host "Usage: force-version 'X.Y.Z'" -ForegroundColor Red
+        return
+    }
+    Write-Host "🎯 Forcing version to $Version..." -ForegroundColor Green
+    python scripts/version_manager.py --force-version $Version
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✅ Version forced to $Version successfully!" -ForegroundColor Green
+        Write-Host "Don't forget to commit the changes." -ForegroundColor Yellow
+    }
+}
+
 # Help function
 function pio-help {
     Write-Host "ESP32 Poop Monitor - Available Commands:" -ForegroundColor Green
@@ -221,6 +252,11 @@ function pio-help {
     Write-Host "Git Commands:" -ForegroundColor Yellow
     Write-Host "  git-status-clean        Git status (no build files)"
     Write-Host "  commit-version 'ver'    Commit with version tag"
+    Write-Host ""
+    Write-Host "Version Management:" -ForegroundColor Yellow
+    Write-Host "  preview-version         Preview version changes"
+    Write-Host "  update-version          Apply smart version increment"
+    Write-Host "  force-version 'X.Y.Z'   Force specific version"
     Write-Host ""
     Write-Host "Workflow Commands:" -ForegroundColor Yellow
     Write-Host "  deploy-ota              Build + Upload + Monitor"

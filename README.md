@@ -344,6 +344,32 @@ curl http://poop-monitor.local/status | python3 -m json.tool
 ## Development & CI
 
 - **GitHub Actions Workflow:** Automated build and tag for releases, with CI credentials template for safe builds.
+- **🤖 Smart Version Tagging:** Intelligent semantic versioning based on commit analysis and PR content.
+  - Analyzes changes to determine appropriate version increments (major/minor/patch)
+  - Automatically updates `src/config.cpp` and `README.md` with new versions
+  - Supports manual overrides via issue labels (`major`, `minor`, `patch`)
+  - Ignores infrastructure-only changes (CI, Docker, scripts)
+  - See [`docs/VERSION_TAGGING.md`](docs/VERSION_TAGGING.md) for complete documentation
+
+### Version Management Commands
+
+```bash
+# Preview version changes
+./scripts/preview_version.sh
+
+# Apply automatic version increment  
+python3 scripts/version_manager.py
+
+# Force specific version
+python3 scripts/version_manager.py --force-version 2.5.0
+```
+
+**PowerShell (Windows):**
+```powershell
+preview-version     # Preview changes
+update-version      # Apply automatic increment
+force-version "2.5.0"  # Force specific version
+```
 
 ## Security Notes
 
