@@ -2,7 +2,20 @@
 
 An ESP32-based monitoring device with **Home Assistant integration**, modern web interface, live console streaming, smart DNS monitoring, and comprehensive automation tools.
 
-## What's New (v2.4.0)
+## What's New (v2.5.0)
+
+### 2.5.0
+
+- **Conditional Compilation System** - Revolutionary build optimization with three configurations for different deployment needs.
+- **MQTT-Only Configuration** - Default optimized build with **39KB flash savings** (991KB vs 1030KB) for Home Assistant-only deployments.
+- **WebServer-Only Configuration** - Standalone web interface build with **18KB flash savings** for non-Home Assistant setups.
+- **Full Feature Configuration** - Complete build with both MQTT and WebServer (equivalent to previous versions).
+- **Enhanced Build Scripts** - Comprehensive shell and PowerShell automation with configuration-specific commands.
+- **Preprocessor-Based Optimization** - Clean conditional compilation using `#ifdef` directives for minimal overhead.
+- **Build Validation Suite** - Automated testing script (`test_build_configs.sh`) to verify all configurations compile successfully.
+- **Flexible Library Dependencies** - Smart library inclusion (PubSubClient only when MQTT enabled).
+- **Serial Upload Variants** - Development-friendly serial upload options for all three configurations.
+- **Memory Optimization Documentation** - Detailed flash usage comparison and configuration guide.
 
 ### 2.4.1
 
