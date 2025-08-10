@@ -1,3 +1,4 @@
-- Rollback on failure 
+- Rollback on failure
 - Usage bars for memory/cpu/flash
 - upload alert and finish alert
+- Adaptive power management with deep and light sleep

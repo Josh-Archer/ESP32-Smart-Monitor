@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
+#include <esp_sleep.h>
 #include "config.h"
 #include "telnet.h"
 #include "notifications.h"
@@ -24,6 +25,45 @@ Preferences preferences;
 // Global variables for tracking heartbeat status
 unsigned long lastSuccessfulHeartbeat = 0;
 int lastHeartbeatResponseCode = 0;
+
+// Track time of last firmware update to avoid sleep for 30 minutes
+unsigned long firmwareUpdateTime = 0;
+
+// Power management constants
+const unsigned long STATUS_INTERVAL_MS = 5 * 60 * 1000;      // 5 minutes
+const uint64_t STATUS_INTERVAL_US = STATUS_INTERVAL_MS * 1000ULL;
+const unsigned long NO_SLEEP_AFTER_UPDATE_MS = 30 * 60 * 1000; // 30 minutes
+const int OTA_WINDOW_MINUTES = 15;                             // First 15 min each hour
+
+bool shouldStayAwake() {
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+  bool otaWindow = timeinfo.tm_min < OTA_WINDOW_MINUTES;
+  bool recentUpdate = (firmwareUpdateTime > 0) &&
+                      ((millis() - firmwareUpdateTime) < NO_SLEEP_AFTER_UPDATE_MS);
+  return otaWindow || recentUpdate;
+}
+
+void enterDeepSleep() {
+#ifdef ENABLE_MQTT
+  publishAvailability(false);
+  delay(100);
+#endif
+  esp_sleep_enable_timer_wakeup(STATUS_INTERVAL_US);
+  Serial.printf("[%10lu ms] [POWER] Entering deep sleep for 5 minutes\r\n", millis());
+  esp_deep_sleep_start();
+}
+
+void enterLightSleepUntilDNSRestored() {
+  sendPushoverAlert("DNS Down", "Entering light sleep until DNS recovers", 1);
+  while (!testDNSResolution()) {
+    Serial.printf("[%10lu ms] [POWER] DNS down - light sleeping 60s\r\n", millis());
+    esp_sleep_enable_timer_wakeup(60ULL * 1000000ULL);
+    esp_light_sleep_start();
+  }
+  Serial.printf("[%10lu ms] [POWER] DNS restored - resuming normal operation\r\n", millis());
+}
 
 void setup() {
   Serial.begin(115200);
@@ -88,6 +128,7 @@ void setup() {
         
         preferences.putULong("updateTime", millis());
         preferences.putString("updateFrom", lastVersion);
+        firmwareUpdateTime = millis();
       } else {
         Serial.printf("[%10lu ms] [BOOT] First boot with version tracking\r\n", millis());
       }
@@ -100,7 +141,7 @@ void setup() {
       unsigned long lastUpdateTime = preferences.getULong("updateTime", 0);
       String updateFrom = preferences.getString("updateFrom", "");
       if (lastUpdateTime > 0 && updateFrom != "") {
-        Serial.printf("[%10lu ms] [INFO] Last OTA update was from %s at boot time %lu ms\r\n", 
+        Serial.printf("[%10lu ms] [INFO] Last OTA update was from %s at boot time %lu ms\r\n",
                       millis(), updateFrom.c_str(), lastUpdateTime);
       }
     }
@@ -128,6 +169,14 @@ void setup() {
     Serial.printf("[%10lu ms] [DNS] Configured DNS - Primary: %s, Fallback: %s\r\n", 
                   millis(), primaryDNS.toString().c_str(), fallbackDNS.toString().c_str());
     
+    // Configure time for OTA scheduling
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    time_t now = time(nullptr);
+    while (now < 100000) {
+      delay(500);
+      now = time(nullptr);
+    }
+
     // Test DNS resolution
     testDNSResolution();
     
@@ -170,61 +219,55 @@ void loop() {
 #endif
 
 #ifdef ENABLE_MQTT
-  handleMQTTLoop();  // Handle MQTT connection and publishing
+  handleMQTTLoop();
 #endif
-  
+
   // Check for reboot flag (set by web interface)
   if (checkRebootFlag()) {
 #ifdef ENABLE_MQTT
-    // Publish offline status before rebooting
     publishAvailability(false);
-    delay(100);  // Give time for MQTT message to send
+    delay(100);
 #endif
     rebootDevice(3000, "Remote reboot request");
   }
-  
-  unsigned long now = millis();
 
   if (WiFi.status() != WL_CONNECTED) {
-    telnetPrintf("[%10lu ms] WiFi disconnected. Attempting reconnect...\r\n", now);
+    telnetPrintf("[%10lu ms] WiFi disconnected. Attempting reconnect...\r\n", millis());
     WiFi.begin(ssid, password);
     delay(2000);
     return;
   }
 
-  // Test DNS every 10 heartbeats (50 seconds)
-  static int heartbeatCount = 0;
-  if (heartbeatCount % 10 == 0) {
-    testDNSResolution();
+  // Verify DNS and enter light sleep if down
+  if (!testDNSResolution()) {
+    enterLightSleepUntilDNSRestored();
   }
-  heartbeatCount++;
 
   WiFiClient client;
   HTTPClient http;
   http.begin(client, apiEndpoint);
   http.setTimeout(10000);
-  
+
   int httpCode = http.GET();
   lastHeartbeatResponseCode = httpCode;
 
   if (httpCode > 0) {
     String payload = http.getString();
     telnetPrintf("[%10lu ms] [Heartbeat] Ping Response (%d): %s\r\n", millis(), httpCode, payload.c_str());
-    
-    // Track successful heartbeat (200 OK)
+
     if (httpCode == 200) {
       lastSuccessfulHeartbeat = millis();
     }
   } else {
     telnetPrintf("[%10lu ms] [Heartbeat] Ping failed: %s\r\n", millis(), http.errorToString(httpCode).c_str());
-    
-    // If heartbeat fails, test DNS resolution
-    if (httpCode == HTTPC_ERROR_CONNECTION_REFUSED || httpCode == -1) {
-      telnetPrintf("[%10lu ms] [DEBUG] Heartbeat failed, testing DNS...\r\n", millis());
-      testDNSResolution();
-    }
   }
 
   http.end();
-  delay(5000);
+
+  if (shouldStayAwake()) {
+    Serial.printf("[%10lu ms] [POWER] Staying awake for OTA or update window\r\n", millis());
+    delay(STATUS_INTERVAL_MS);
+  } else {
+    enterDeepSleep();
+  }
 }

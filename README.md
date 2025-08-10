@@ -2,7 +2,16 @@
 
 An ESP32-based monitoring device with **Home Assistant integration**, modern web interface, live console streaming, smart DNS monitoring, and comprehensive automation tools.
 
-## What's New (v2.8.0)
+## What's New (v3.0.0)
+
+### 3.0.0 - Adaptive Power Management
+
+- **⏱️ Five-minute status cadence** with automatic deep sleep between updates
+- **🛌 Light sleep on DNS failures** until connectivity is restored
+- **🛠️ OTA-friendly windows**
+  - No sleep for 30 minutes after firmware updates
+  - Awake for the first 15 minutes of every hour for maintenance/OTAs
+- **📢 OTA script awareness** warns when attempting to flash sleeping devices
 
 ### 2.6.2 - OTA Rollback Protection
 
