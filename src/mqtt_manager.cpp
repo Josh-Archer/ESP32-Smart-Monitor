@@ -29,7 +29,7 @@ const char* HA_MODEL = "ESP32-C3";
 unsigned long lastMQTTReconnectAttempt = 0;
 unsigned long lastStatusPublish = 0;
 const unsigned long MQTT_RECONNECT_INTERVAL = 5000;    // Try to reconnect every 5 seconds
-const unsigned long STATUS_PUBLISH_INTERVAL = 30000;   // Publish status every 30 seconds
+const unsigned long STATUS_PUBLISH_INTERVAL = 300000;   // Publish status every 5 minutes
 
 // Helper to format memory usage as "freeKB/totalKB"
 static String getMemoryUsage() {

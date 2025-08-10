@@ -84,6 +84,13 @@ fi
 
 print_status $CYAN "Building with environment: $ENVIRONMENT"
 
+# Check if device is awake before attempting OTA
+print_status $YELLOW "Checking device awake state..."
+if ! python3 scripts/check_sleep.py; then
+    print_status $RED "Device appears to be sleeping. Aborting upload."
+    exit 1
+fi
+
 # Step 1: Build the project
 print_status $YELLOW "Building project..."
 if ~/.local/bin/platformio run --environment $ENVIRONMENT; then

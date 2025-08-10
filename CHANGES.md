@@ -2,6 +2,13 @@
 
 # Recent Changes Summary
 
+## 3.0.0 - Adaptive Power Management
+
+- Dynamic sleep strategy with 5-minute deep sleep cycles
+- Light sleep engaged when DNS is unreachable until recovery
+- OTA protection windows: stay awake 30 minutes post-update and first 15 minutes of every hour
+- OTA tooling warns when attempting firmware push during sleep cycles
+
 ## 2.6.2 - OTA Rollback Protection + v2.6.1 Merged Features
 
 **Major Release: Automatic Firmware Rollback Protection + Build Optimization**
