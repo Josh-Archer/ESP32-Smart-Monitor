@@ -3,6 +3,7 @@
 #include "notifications.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <Preferences.h>
 
 // Global variables for DNS failure tracking
 bool dnsFailureReported = false;           // Prevent spam notifications
@@ -17,10 +18,32 @@ bool isDNSWorking = true;
 unsigned long lastDNSCheck = 0;
 unsigned long dnsFailureStartTime = 0;
 
-// Constants for DNS alert timing (5 minutes and 30 minutes)
-const unsigned long DNS_FAILURE_THRESHOLD_MS = 5 * 60 * 1000;   // 5 minutes before first alert
-const unsigned long DNS_ALERT_INTERVAL_MS = 30 * 60 * 1000;     // 30 minutes between alerts
-const unsigned long DNS_RECOVERY_THRESHOLD_MS = 5 * 60 * 1000;  // 5 minutes before recovery alert
+// Runtime-adjustable DNS timing (defaults set here; can be changed via MQTT command interface)
+unsigned long dnsFailureThresholdMs = 5UL * 60UL * 1000UL;            // Down this long before first alert
+unsigned long dnsAlertIntervalMs = 30UL * 60UL * 1000UL;              // Interval between repeated down alerts
+unsigned long dnsRecoveryThresholdMs = 5UL * 60UL * 1000UL;           // Continuous healthy period before recovery alert
+unsigned long dnsMinFailureDurationForRecoveryMs = 60UL * 1000UL;     // Minimum outage duration to qualify for recovery flow
+
+// Immutable defaults for validation / reset
+const unsigned long DNS_DEFAULT_FAILURE_THRESHOLD_MS = 5UL * 60UL * 1000UL;
+const unsigned long DNS_DEFAULT_ALERT_INTERVAL_MS = 30UL * 60UL * 1000UL;
+const unsigned long DNS_DEFAULT_RECOVERY_THRESHOLD_MS = 5UL * 60UL * 1000UL;
+const unsigned long DNS_DEFAULT_MIN_FAILURE_FOR_RECOVERY_MS = 60UL * 1000UL;
+
+static bool dnsConfigLoaded = false;
+
+// Minimum failure duration rationale:
+// Very short DNS hiccups (<60s) are treated as micro blips and will NOT trigger the
+// recovery tracking / recovery notification path. This avoids noisy "Recovered" alerts
+// for transient packet loss or momentary upstream resolver stalls. Adjust this threshold
+// if your network environment exhibits longer benign hiccups.
+
+// NOTE: Recovery debounce explanation
+// We only send a "DNS Recovered" alert after DNS has been continuously healthy
+// for dnsRecoveryThresholdMs without ANY complete failure in between.
+// Partial failures (primary down but fallback working) do not reset the timer;
+// complete failures (both primary & fallback) reset dnsRecoveryTime to enforce
+// a contiguous healthy period and prevent alert flapping.
 
 // Test DNS server connectivity using a reliable external service
 bool testDNSServerConnectivity(const char* testUrl) {
@@ -46,6 +69,21 @@ void handleSuccessfulDNSResolution() {
   if (dnsFailureReported) {
     unsigned long currentTime = millis();
 
+  // If prior failure was extremely brief (< dnsMinFailureDurationForRecoveryMs) treat it as a micro blip
+    // and do NOT start recovery tracking / send a recovery alert. This prevents noisy up/down sequences
+    // (e.g., transient packet loss) from generating meaningless "DNS Recovered" notifications.
+    // We rely on dnsFailureReported flag for real outages; micro blips should clear that state.
+    if (dnsFirstFailureTime != 0) {
+      unsigned long failureDuration = currentTime - dnsFirstFailureTime;
+  if (failureDuration < dnsMinFailureDurationForRecoveryMs) {
+        Serial.printf("[%10lu ms] [DNS] Previous failure lasted %lu ms (< %lu ms min); suppressing recovery tracking & alert\r\n",
+          currentTime, failureDuration, dnsMinFailureDurationForRecoveryMs);
+        resetDNSFailureTracking();
+        // Do not proceed with recovery timer logic for micro blip
+        return;
+      }
+    }
+
     // Start tracking recovery time if not already tracking
     if (dnsRecoveryTime == 0) {
       dnsRecoveryTime = currentTime;
@@ -54,7 +92,7 @@ void handleSuccessfulDNSResolution() {
 
     // Check if DNS has been stable for the threshold time before sending recovery alert
     unsigned long timeSinceRecovery = currentTime - dnsRecoveryTime;
-    if (timeSinceRecovery >= DNS_RECOVERY_THRESHOLD_MS) {
+  if (timeSinceRecovery >= dnsRecoveryThresholdMs) {
       // DNS has been stable for 5+ minutes, send recovery notification ONCE per instability event
       if (!areAlertsPaused()) {
         String recoveryMessage = "DNS server " + primaryDNS.toString() + " has been stable for " + 
@@ -80,7 +118,7 @@ void handleSuccessfulDNSResolution() {
       }
     } else {
       // DNS is working but hasn't been stable long enough yet
-      unsigned long minutesUntilAlert = (DNS_RECOVERY_THRESHOLD_MS - timeSinceRecovery) / 60000;
+  unsigned long minutesUntilAlert = (dnsRecoveryThresholdMs - timeSinceRecovery) / 60000;
       Serial.printf("[%10lu ms] [DNS] DNS working for %lu minutes, recovery alert in %lu minutes\r\n", 
                     currentTime, timeSinceRecovery / 60000, minutesUntilAlert);
     }
@@ -153,7 +191,7 @@ bool shouldSendDNSDownAlert(unsigned long currentTime) {
   unsigned long timeSinceFirstFailure = currentTime - dnsFirstFailureTime;
   
   // Must be down for at least 5 minutes before first alert
-  if (timeSinceFirstFailure < DNS_FAILURE_THRESHOLD_MS) {
+  if (timeSinceFirstFailure < dnsFailureThresholdMs) {
     return false;
   }
   
@@ -164,7 +202,7 @@ bool shouldSendDNSDownAlert(unsigned long currentTime) {
   
   // Subsequent alerts every 30 minutes
   unsigned long timeSinceLastAlert = currentTime - lastDnsAlertTime;
-  return (timeSinceLastAlert >= DNS_ALERT_INTERVAL_MS);
+  return (timeSinceLastAlert >= dnsAlertIntervalMs);
 }
 
 // Send DNS down alert with timing information
@@ -230,6 +268,16 @@ void handleCompleteDNSFailure() {
   if (dnsFailureStartTime == 0) {
     dnsFailureStartTime = lastDNSCheck;
   }
+  // IMPORTANT: Any complete failure invalidates prior recovery stability tracking.
+  // If dnsRecoveryTime was already counting (we had partial recovery but failed again
+  // before reaching DNS_RECOVERY_THRESHOLD_MS), clear it so we require a *continuous*
+  // healthy window before sending a "DNS Recovered" alert. Otherwise intermittent
+  // flapping could accumulate non-contiguous uptime and spam recovery alerts.
+  if (dnsRecoveryTime != 0) {
+    Serial.printf("[%10lu ms] [DNS] Resetting recovery stability timer due to renewed failure (was tracking since +%lu ms)\r\n",
+                  millis(), dnsRecoveryTime);
+    dnsRecoveryTime = 0;
+  }
   
   // Only send critical alert if primary and fallback DNS are actually different servers
   // If they're the same, we're just testing the same server twice
@@ -285,4 +333,88 @@ bool testDNSResolutionWithSmartAlerting() {
 // Legacy function name for backward compatibility
 bool testDNSResolution() {
   return testDNSResolutionWithSmartAlerting();
+}
+
+// Update DNS timing configuration (0 parameters mean 'leave unchanged')
+void updateDNSConfig(unsigned long failureThresholdMs,
+                     unsigned long alertIntervalMs,
+                     unsigned long recoveryThresholdMs,
+                     unsigned long minFailureForRecoveryMs) {
+  bool changed = false;
+  const unsigned long MAX_ALLOWED_MS = 24UL * 60UL * 60UL * 1000UL; // 24 hours
+  auto validate = [&](unsigned long value, unsigned long def, unsigned long minReq) -> unsigned long {
+    if (value == 0) return 0; // unchanged
+    if (value < minReq || value > MAX_ALLOWED_MS) return def; // invalid -> default
+    return value;
+  };
+  unsigned long vFailure = validate(failureThresholdMs, DNS_DEFAULT_FAILURE_THRESHOLD_MS, 30UL * 1000UL);
+  unsigned long vInterval = validate(alertIntervalMs, DNS_DEFAULT_ALERT_INTERVAL_MS, 60UL * 1000UL);
+  unsigned long vRecovery = validate(recoveryThresholdMs, DNS_DEFAULT_RECOVERY_THRESHOLD_MS, 30UL * 1000UL);
+  unsigned long vMinFail = validate(minFailureForRecoveryMs, DNS_DEFAULT_MIN_FAILURE_FOR_RECOVERY_MS, 5UL * 1000UL);
+  if (vFailure && vFailure != dnsFailureThresholdMs) { dnsFailureThresholdMs = vFailure; changed = true; }
+  if (vInterval && vInterval != dnsAlertIntervalMs) { dnsAlertIntervalMs = vInterval; changed = true; }
+  if (vRecovery && vRecovery != dnsRecoveryThresholdMs) { dnsRecoveryThresholdMs = vRecovery; changed = true; }
+  if (vMinFail && vMinFail != dnsMinFailureDurationForRecoveryMs) { dnsMinFailureDurationForRecoveryMs = vMinFail; changed = true; }
+  if (changed) {
+    Serial.printf("[DNS] Updated config: failureThreshold=%lu ms, alertInterval=%lu ms, recoveryThreshold=%lu ms, minFailureForRecovery=%lu ms\r\n",
+                  dnsFailureThresholdMs, dnsAlertIntervalMs, dnsRecoveryThresholdMs, dnsMinFailureDurationForRecoveryMs);
+    // Persist
+    Preferences prefs;
+    if (prefs.begin("dns_cfg", false)) {
+      prefs.putULong("fail_thr", dnsFailureThresholdMs);
+      prefs.putULong("alert_int", dnsAlertIntervalMs);
+      prefs.putULong("rec_thr", dnsRecoveryThresholdMs);
+      prefs.putULong("min_rec", dnsMinFailureDurationForRecoveryMs);
+      prefs.end();
+      Serial.println("[DNS] Config saved to NVS");
+    } else {
+      Serial.println("[DNS] Failed to open NVS for saving config");
+    }
+  } else {
+    Serial.println("[DNS] updateDNSConfig called but no values changed");
+  }
+}
+
+void loadDNSConfigFromStorage() {
+  if (dnsConfigLoaded) return;
+  Preferences prefs;
+  if (!prefs.begin("dns_cfg", true)) {
+    Serial.println("[DNS] No stored DNS config (RO open failed), using defaults");
+    dnsConfigLoaded = true;
+    return;
+  }
+  unsigned long f = prefs.getULong("fail_thr", DNS_DEFAULT_FAILURE_THRESHOLD_MS);
+  unsigned long i = prefs.getULong("alert_int", DNS_DEFAULT_ALERT_INTERVAL_MS);
+  unsigned long r = prefs.getULong("rec_thr", DNS_DEFAULT_RECOVERY_THRESHOLD_MS);
+  unsigned long m = prefs.getULong("min_rec", DNS_DEFAULT_MIN_FAILURE_FOR_RECOVERY_MS);
+  prefs.end();
+  if (f == 0 || i == 0 || r == 0 || m == 0) {
+    Serial.println("[DNS] Stored DNS config invalid (zero), reverting to defaults");
+    f = DNS_DEFAULT_FAILURE_THRESHOLD_MS;
+    i = DNS_DEFAULT_ALERT_INTERVAL_MS;
+    r = DNS_DEFAULT_RECOVERY_THRESHOLD_MS;
+    m = DNS_DEFAULT_MIN_FAILURE_FOR_RECOVERY_MS;
+  }
+  dnsFailureThresholdMs = f;
+  dnsAlertIntervalMs = i;
+  dnsRecoveryThresholdMs = r;
+  dnsMinFailureDurationForRecoveryMs = m;
+  dnsConfigLoaded = true;
+  Serial.printf("[DNS] Loaded config: failureThreshold=%lu ms, alertInterval=%lu ms, recoveryThreshold=%lu ms, minFailureForRecovery=%lu ms\r\n",
+                dnsFailureThresholdMs, dnsAlertIntervalMs, dnsRecoveryThresholdMs, dnsMinFailureDurationForRecoveryMs);
+}
+
+void saveDNSConfigToStorage() {
+  // Provided for explicit save if needed elsewhere (currently updateDNSConfig persists automatically)
+  Preferences prefs; 
+  if (!prefs.begin("dns_cfg", false)) {
+    Serial.println("[DNS] Failed to open NVS for explicit save");
+    return;
+  }
+  prefs.putULong("fail_thr", dnsFailureThresholdMs);
+  prefs.putULong("alert_int", dnsAlertIntervalMs);
+  prefs.putULong("rec_thr", dnsRecoveryThresholdMs);
+  prefs.putULong("min_rec", dnsMinFailureDurationForRecoveryMs);
+  prefs.end();
+  Serial.println("[DNS] Explicit config save complete");
 }

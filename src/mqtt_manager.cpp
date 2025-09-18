@@ -118,6 +118,7 @@ void connectToMQTT() {
         // Subscribe to command topics
         mqttClient.subscribe((String(MQTT_COMMAND_TOPIC) + "/reboot").c_str());
         mqttClient.subscribe((String(MQTT_COMMAND_TOPIC) + "/alerts").c_str());
+    mqttClient.subscribe((String(MQTT_COMMAND_TOPIC) + "/dns_config").c_str());
         
         // Publish that we're online
         publishAvailability(true);
@@ -362,6 +363,23 @@ String getDeviceStatusJSON() {
     statusDoc["fallback_dns"] = fallbackDNS.toString();
     statusDoc["current_dns1"] = WiFi.dnsIP(0).toString();
     statusDoc["current_dns2"] = WiFi.dnsIP(1).toString();
+    // DNS timing configuration (runtime adjustable)
+    extern unsigned long dnsFailureThresholdMs;
+    extern unsigned long dnsAlertIntervalMs;
+    extern unsigned long dnsRecoveryThresholdMs;
+    extern unsigned long dnsMinFailureDurationForRecoveryMs;
+    statusDoc["dns_failure_threshold_ms"] = dnsFailureThresholdMs;
+    statusDoc["dns_alert_interval_ms"] = dnsAlertIntervalMs;
+    statusDoc["dns_recovery_threshold_ms"] = dnsRecoveryThresholdMs;
+    statusDoc["dns_min_failure_for_recovery_ms"] = dnsMinFailureDurationForRecoveryMs;
+    extern const unsigned long DNS_DEFAULT_FAILURE_THRESHOLD_MS;
+    extern const unsigned long DNS_DEFAULT_ALERT_INTERVAL_MS;
+    extern const unsigned long DNS_DEFAULT_RECOVERY_THRESHOLD_MS;
+    extern const unsigned long DNS_DEFAULT_MIN_FAILURE_FOR_RECOVERY_MS;
+    statusDoc["dns_using_default_failure_threshold"] = (dnsFailureThresholdMs == DNS_DEFAULT_FAILURE_THRESHOLD_MS);
+    statusDoc["dns_using_default_alert_interval"] = (dnsAlertIntervalMs == DNS_DEFAULT_ALERT_INTERVAL_MS);
+    statusDoc["dns_using_default_recovery_threshold"] = (dnsRecoveryThresholdMs == DNS_DEFAULT_RECOVERY_THRESHOLD_MS);
+    statusDoc["dns_using_default_min_failure_for_recovery"] = (dnsMinFailureDurationForRecoveryMs == DNS_DEFAULT_MIN_FAILURE_FOR_RECOVERY_MS);
     
     // Timestamp
     statusDoc["timestamp"] = millis();
@@ -515,6 +533,26 @@ void onMQTTMessage(char* topic, byte* payload, unsigned int length) {
         }
         // Publish updated alerts state
         delay(100);
+        publishAllSensors();
+    }
+    // Handle DNS config update (expects JSON)
+    else if (topicStr == String(MQTT_COMMAND_TOPIC) + "/dns_config") {
+        // Parse JSON for optional keys: failure_threshold_ms, alert_interval_ms,
+        // recovery_threshold_ms, min_failure_for_recovery_ms
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, message);
+        if (err) {
+            Serial.printf("Invalid DNS config JSON: %s\n", err.c_str());
+            return;
+        }
+        unsigned long failure = doc["failure_threshold_ms"] | 0UL;
+        unsigned long interval = doc["alert_interval_ms"] | 0UL;
+        unsigned long recovery = doc["recovery_threshold_ms"] | 0UL;
+        unsigned long minRec = doc["min_failure_for_recovery_ms"] | 0UL;
+        extern void updateDNSConfig(unsigned long, unsigned long, unsigned long, unsigned long);
+        updateDNSConfig(failure, interval, recovery, minRec);
+        // Publish updated status after change
+        delay(50);
         publishAllSensors();
     }
 }

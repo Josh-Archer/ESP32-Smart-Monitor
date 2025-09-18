@@ -108,6 +108,9 @@ void setup() {
     Serial.printf("[%10lu ms] [WARNING] Version tracking disabled - NVS error\r\n", millis());
   }
 
+  // Load persisted DNS timing configuration (after preferences system ready)
+  loadDNSConfigFromStorage();
+
   // Connect to WiFi
   WiFi.begin(ssid, password);
   Serial.printf("[%10lu ms] Connecting to WiFi: %s\r\n", millis(), ssid);
@@ -192,9 +195,9 @@ void loop() {
     return;
   }
 
-  // Test DNS every 10 heartbeats (50 seconds)
+  // Test DNS every 20 heartbeats (100 seconds) - reduced frequency
   static int heartbeatCount = 0;
-  if (heartbeatCount % 10 == 0) {
+  if (heartbeatCount % 20 == 0) {
     testDNSResolution();
   }
   heartbeatCount++;
