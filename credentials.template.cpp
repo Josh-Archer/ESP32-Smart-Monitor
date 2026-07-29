@@ -1,23 +1,14 @@
-#include "src/credentials.h"
-
-// INSTRUCTIONS:
-// 1. Copy this file to src/credentials.cpp
-// 2. Fill in your actual values
-// 3. credentials.cpp is in .gitignore so your secrets won't be committed
-
-// WiFi Configuration
-const char* WIFI_SSID = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-
-// OTA Configuration  
-const char* OTA_PASSWORD = "YOUR_OTA_PASSWORD";
-
-// Pushover Configuration
-const char* PUSHOVER_TOKEN = "YOUR_PUSHOVER_APP_TOKEN";
-const char* PUSHOVER_USER = "YOUR_PUSHOVER_USER_KEY";
-
-// MQTT Configuration
-const char* MQTT_SERVER = "YOUR_MQTT_SERVER_IP";      // e.g., "192.168.1.100"
-const int MQTT_PORT = 1883;                           // Default MQTT port (1883 or 8883 for SSL)
-const char* MQTT_USER = "YOUR_MQTT_USERNAME";         // Can be "" if no auth required
-const char* MQTT_PASSWORD = "YOUR_MQTT_PASSWORD";     // Can be "" if no auth required
+// DEPRECATED: use credentials.template.h instead.
+//
+// Previous flow (no longer used by the build):
+//   copy credentials.template.cpp → src/credentials.cpp
+//
+// Current flow:
+//   1. Copy credentials.template.h → src/credentials_private.h
+//   2. Fill in YOUR_* placeholders
+//   3. Secrets are compile-time macros checked in src/credentials.h
+//
+// Non-secret settings (MQTT host, DNS, device name, etc.) remain in
+// src/config.cpp. Do not put WiFi/OTA/Pushover/MQTT passwords there.
+//
+// This file is kept only so existing docs/links do not 404; it is not compiled.

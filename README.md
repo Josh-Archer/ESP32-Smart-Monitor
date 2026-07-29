@@ -32,8 +32,8 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 - **Improved Memory Reporting** - Free memory now shown as both formatted string and percent (`free_memory_percent`).
 - **Last Heartbeat MQTT State** - Home Assistant now receives a formatted uptime for the last heartbeat.
 - **Enhanced MQTT Metrics** - More detailed and human-friendly metrics for Home Assistant.
-- **CI/CD Improvements** - GitHub Actions workflow for build/tag automation and CI credentials template.
-- **Credentials Header** - Added `src/credentials.h` for standardized credential imports.
+- **CI/CD Improvements** - GitHub Actions workflow for build/tag automation; CI copies `credentials.template.h` for dummy secrets.
+- **Credentials split** - Secrets in gitignored `credentials_private.h` with compile-time macro checks; non-secrets in `config.cpp`.
 - **Bug Fixes** - JSON escape padding, reboot flag storage, and cache-bust emoji.
 
 ---
@@ -53,9 +53,8 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 - 📡 WiFi connectivity with custom DNS configuration and fallback
 - 🔄 OTA (Over-The-Air) firmware updates with **automatic rollback protection**
 - 🛡️ **Smart Boot Failure Recovery** - Automatic rollback after 10 consecutive boot failures
-- 🏠 **Home Assistant Integration** - MQTT auto-discovery with 15+ sensors and controls
-- 📊 **Real-time MQTT Publishing** - Device status, WiFi signal, DNS health, network latency/jitter, uptime tracking
-- 📈 **Network Latency & Jitter** - Configurable HTTP probe target with HA sensors for RTT quality
+- 🏠 **Home Assistant Integration** - MQTT auto-discovery with 12+ sensors and controls
+- 📊 **Real-time MQTT Publishing** - Device status, WiFi signal, DNS health, uptime tracking
 - 📋 **Live Telnet Logs in HA** - View device console output in Home Assistant
 - 🎛️ **Remote Device Control** - Reboot and alert management from Home Assistant
 - 🖥️ **Live telnet console streaming** to web interface with syntax highlighting
@@ -70,53 +69,72 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 
 ## Configuration Setup
 
-**Simple Setup**: All configuration is now in `src/config.cpp` - no separate credentials files needed!
+Secrets and non-secret config are **split on purpose** so you do not flash a device with the wrong (or empty) credential path.
 
-### Edit Configuration
+| What | Where | Git |
+|------|--------|-----|
+| **Secrets** (WiFi, OTA password, Pushover, MQTT auth) | `src/credentials_private.h` | **gitignored** — never commit |
+| **Non-secrets** (device name, MQTT host/port, DNS, API URLs) | `src/config.cpp` | committed |
 
-Edit `src/config.cpp` with your actual values:
+### 1. Create private credentials (required)
 
-```cpp
-// WiFi Configuration
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
-
-// Heartbeat / notification-api (see docs/HEARTBEAT.md)
-// Default resolves to {base}/heartbeat/{deviceId}
-const char* heartbeatBaseUrl = "http://notifications.example.com"; // no trailing slash
-const char* heartbeatDeviceId = "poop";           // notification-api path segment
-const char* heartbeatPath = "";                   // or "/health" for a generic probe
-
-// OTA Configuration  
-const char* otaPassword = "YOUR_OTA_PASSWORD";
-
-// Pushover Configuration
-const char* pushoverToken = "YOUR_PUSHOVER_APP_TOKEN";
-const char* pushoverUser = "YOUR_PUSHOVER_USER_KEY";
-
-// MQTT Configuration (for Home Assistant)
-const char* mqttServer = "192.168.1.100";      // Your MQTT broker IP
-const int mqttPort = 1883;                     // MQTT port
-const char* mqttUser = "";                     // MQTT username (empty if no auth)
-const char* mqttPassword = "";                 // MQTT password (empty if no auth)
+```bash
+# From the repo root
+cp credentials.template.h src/credentials_private.h
+# Then edit src/credentials_private.h and replace every YOUR_* value
 ```
 
-**Heartbeat URL** is no longer a single hard-coded path: set `heartbeatBaseUrl` + `heartbeatDeviceId`, or set `heartbeatPath` (e.g. `"/health"`) for a generic health endpoint. Full contract: [`docs/HEARTBEAT.md`](docs/HEARTBEAT.md).
+PowerShell:
+
+```powershell
+Copy-Item credentials.template.h src/credentials_private.h
+# Edit src/credentials_private.h — fill in YOUR_* placeholders
+```
+
+`src/credentials.h` enforces the required macros at **compile time** (`#error` if any are missing). CI copies the same template with dummy values so PRs build without real secrets.
+
+Example `src/credentials_private.h`:
+
+```cpp
+#pragma once
+#define WIFI_SSID       "MyNetwork"
+#define WIFI_PASSWORD   "secret"
+#define OTA_PASSWORD    "ota-secret"
+#define PUSHOVER_TOKEN  "app-token"
+#define PUSHOVER_USER   "user-key"
+#define MQTT_USER       "mqtt-user"   // or ""
+#define MQTT_PASSWORD   "mqtt-pass"   // or ""
+```
+
+### 2. Edit non-secret config
+
+Edit `src/config.cpp` for broker host, DNS, device name, etc.:
+
+```cpp
+const char* mqttServer = "192.168.1.100";  // MQTT broker IP or hostname
+const int mqttPort = 1883;
+const char* deviceName = "poop-monitor";
+// DNS, API endpoint, etc.
+```
+
+Do **not** put WiFi passwords or tokens in `config.cpp` — they belong in `credentials_private.h`.
 
 ### File Structure
 
 ```
+credentials.template.h    # Template → copy to src/credentials_private.h
 src/
-├── main.cpp              # Main program
-├── config.h/.cpp         # All configuration (WiFi, MQTT, Pushover, etc.)
-├── telnet.h/.cpp         # Telnet server with MQTT log publishing
-├── notifications.h/.cpp  # Pushover alerts
-├── dns_manager.h/.cpp    # DNS testing
-├── network_metrics.h/.cpp # Network latency/jitter probes
-├── ota_manager.h/.cpp    # OTA updates
-├── system_utils.h/.cpp   # System utilities (reboot, etc.)
-├── web_server.h/.cpp     # Web API endpoints
-└── mqtt_manager.h/.cpp   # MQTT & Home Assistant integration
+├── main.cpp
+├── credentials.h         # Compile-time checks; includes credentials_private.h
+├── credentials_private.h # YOUR secrets (gitignored; not in repo)
+├── config.h/.cpp         # Non-secret config + wires credential macros
+├── telnet.h/.cpp
+├── notifications.h/.cpp
+├── dns_manager.h/.cpp
+├── ota_manager.h/.cpp
+├── system_utils.h/.cpp
+├── web_server.h/.cpp
+└── mqtt_manager.h/.cpp
 ```
 
 ## Home Assistant Integration
@@ -139,9 +157,9 @@ To get MQTT working with Home Assistant:
    - Create a username/password or leave empty for no authentication
 
 3. **Update ESP32 Config**:
-   - Set `mqttServer` to your Home Assistant IP address
-   - Set `mqttUser` and `mqttPassword` if you configured authentication
-   - Leave `mqttUser` and `mqttPassword` empty (`""`) if no authentication
+   - Set `mqttServer` / `mqttPort` in `src/config.cpp` to your Home Assistant broker
+   - Set `MQTT_USER` / `MQTT_PASSWORD` in `src/credentials_private.h` if the broker requires auth
+   - Use `#define MQTT_USER ""` and `#define MQTT_PASSWORD ""` if no authentication
 
 ### Home Assistant Entities
 
@@ -152,9 +170,6 @@ Once configured, these entities automatically appear in Home Assistant:
 - **WiFi Signal Strength** - Real-time signal in dBm and percentage  
 - **WiFi Quality** - Human-readable WiFi quality (Excellent/Good/Ok/Poor)
 - **DNS Connectivity** - Binary sensor showing DNS working/failed
-- **Network Latency** - Mean HTTP RTT to the configured probe target (ms)
-- **Network Jitter** - Mean absolute difference between consecutive RTT samples (ms)
-- **Network Probe Target** - Active probe URL used for latency/jitter
 - **Device Uptime** - Uptime tracking with duration device class
 - **Free Memory** - Memory usage monitoring in bytes
 - **Free Memory Percent** - Memory usage as a percentage
@@ -170,7 +185,7 @@ Once configured, these entities automatically appear in Home Assistant:
 **Features:**
 - **Availability Monitoring** - Home Assistant tracks device online/offline status
 - **Real-time Data** - Status published every 30 seconds for live monitoring
-- **Historical Graphs** - WiFi signal, latency/jitter, uptime, memory usage over time
+- **Historical Graphs** - WiFi signal, uptime, memory usage over time
 - **Automation Ready** - Use any sensor for Home Assistant automations
 
 ### MQTT Topics
@@ -182,13 +197,11 @@ The device uses standard Home Assistant discovery topics:
 - **Availability**: `homeassistant/sensor/poop_monitor/availability`
 - **Telnet Logs**: `homeassistant/sensor/poop_monitor/telnet`
 - **Commands**: `homeassistant/poop_monitor/command/*`
-  - `.../reboot`, `.../alerts`, `.../dns_config`, `.../network_config`
 
 ### Home Assistant Dashboard Example
 
 Create dashboards with:
 - Real-time WiFi signal strength graphs
-- Network latency and jitter graphs
 - DNS connectivity status indicators  
 - Device uptime and memory usage charts
 - Live telnet log display
@@ -196,85 +209,9 @@ Create dashboards with:
 - Reboot button for remote management
 - Automation triggers for device offline alerts
 
-## Network Latency & Jitter
-
-In addition to DNS up/down checks, the device measures **network quality** via multi-sample HTTP RTT probes and publishes results to Home Assistant.
-
-### What is measured
-
-| Metric | HA entity | Description |
-|--------|-----------|-------------|
-| Latency | `network_latency` | Mean round-trip time (ms) across successful samples |
-| Jitter | `network_jitter` | Mean absolute difference between consecutive sample RTTs (ms) |
-| Probe target | `network_probe_target` | Active `http://` URL used for probing |
-
-Values are also included in the consolidated status JSON (`network_latency_ms`, `network_jitter_ms`, probe config fields).
-
-### Defaults
-
-- **Probe target**: `http://httpbin.org/ip` (HTTP only — avoids TLS heap cost on ESP32-C3)
-- **Interval**: 60 seconds
-- **Samples per probe**: 4
-- **Per-request timeout**: 3000 ms
-
-Configuration is persisted in NVS (`net_metrics` namespace) and survives reboots.
-
-### Configure via MQTT
-
-Publish JSON to `homeassistant/poop_monitor/command/network_config` (omit keys you want to leave unchanged):
-
-```json
-{
-  "probe_target": "http://connectivitycheck.gstatic.com/generate_204",
-  "interval_ms": 60000,
-  "samples": 4,
-  "timeout_ms": 3000
-}
-```
-
-Rules:
-
-- `probe_target` must be a valid `http://` URL (HTTPS is rejected)
-- `interval_ms`: 10s–24h
-- `samples`: 2–10
-- `timeout_ms`: 500–15000
-- After a successful config update the device runs an immediate probe and republishes sensors
-
-### Home Assistant example
-
-```yaml
-# Alert when latency is consistently high
-automation:
-  - alias: "Poop monitor high latency"
-    trigger:
-      - platform: numeric_state
-        entity_id: sensor.esp32_poop_monitor_network_latency
-        above: 500
-        for: "00:05:00"
-    action:
-      - service: notify.mobile_app
-        data:
-          message: "ESP32 network latency is high"
-```
-
 ## Smart DNS Monitoring
 
 The ESP32 features intelligent DNS monitoring with configurable alerting to prevent notification spam while ensuring you're informed of important network issues.
-
-### Recommended DNS topology
-
-Configure **two different** resolvers in `src/config.cpp` (`primaryDNS` and `fallbackDNS`):
-
-| Role | Recommendation | Example |
-|------|----------------|---------|
-| **Primary** | Local recursive or filtering DNS on your LAN | Pi-hole / AdGuard (`192.168.x.x`) |
-| **Fallback** | A second, independent resolver | Another local DNS host, or a public resolver (`1.1.1.1`, `8.8.8.8`, router DNS) |
-
-- Fallback only helps when it is **not** the same IP as primary. Identical values disable meaningful failover (the firmware treats that as a single server and skips critical dual-failure alerts).
-- Prefer a local primary for filtering/latency, and a distinct fallback so brief primary outages do not take the device fully offline.
-- Sample defaults use a local primary example and Cloudflare (`1.1.1.1`) as fallback — replace both with addresses that match your network.
-
-At boot, if primary and fallback are equal, the serial/telnet log emits a **WARNING** that fallback is a no-op.
 
 ### Key Features
 
@@ -484,9 +421,10 @@ deploy-ota -Environment esp32-c3-devkitm-1-both
 
 ### Quick Start
 
-1. **Configure device**: Edit `src/config.cpp` with your WiFi, MQTT, and other settings
-2. **Build and upload**: `pio-upload-ota` (or `./upload_and_monitor.sh`)
-3. **Access device**: 
+1. **Secrets**: `cp credentials.template.h src/credentials_private.h` and fill in WiFi/OTA/Pushover/MQTT auth
+2. **Non-secrets**: Edit `src/config.cpp` (MQTT host, DNS, device name, etc.)
+3. **Build and upload**: `pio-upload-ota` (or `./upload_and_monitor.sh`)
+4. **Access device**:
    - **MQTT-only**: Home Assistant auto-discovery
    - **WebServer/Both**: `http://poop-monitor.local/`
 
@@ -558,12 +496,13 @@ curl http://poop-monitor.local/status | python3 -m json.tool
 **Build and deployment issues:**
 
 - Use `./upload_and_monitor.sh` for complete build-to-monitoring workflow
-- Check that all configuration values in `src/config.cpp` are set correctly
+- If the compiler reports `Missing WIFI_SSID` (or similar): copy `credentials.template.h` → `src/credentials_private.h` and set every macro
+- Non-secret settings (MQTT host, DNS) live in `src/config.cpp`; secrets must not
 
 
 ## Development & CI
 
-- **GitHub Actions Workflow:** Automated build and tag for releases, with CI credentials template for safe builds.
+- **GitHub Actions Workflow:** Automated build and tag for releases; builds use `credentials.template.h` as dummy secrets (never real credentials).
 - **🤖 Smart Version Tagging:** Intelligent semantic versioning based on commit analysis and PR content.
   - Analyzes changes to determine appropriate version increments (major/minor/patch)
   - Automatically updates `src/config.cpp` and `README.md` with new versions
@@ -593,8 +532,8 @@ force-version "2.5.0"  # Force specific version
 
 ## Security Notes
 
-- Store sensitive values in `src/config.cpp` - consider using environment variables
-- Use strong passwords for OTA updates and MQTT authentication  
+- Store secrets only in `src/credentials_private.h` (gitignored); never commit real tokens/passwords
+- Keep non-secret config in `src/config.cpp`
+- Use strong passwords for OTA updates and MQTT authentication
 - Consider using WPA3 for WiFi if available
-- Pushover tokens should be kept secret
 - MQTT credentials should match your Home Assistant MQTT user configuration
