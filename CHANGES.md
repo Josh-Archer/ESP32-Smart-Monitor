@@ -1,30 +1,14 @@
 # Recent Changes Summary
 
-## Network Latency & Jitter Sensors (#30)
+## Signed / Encrypted OTA Updates (#29)
 
-- **Network quality metrics for Home Assistant** — multi-sample HTTP RTT probes publish **latency** and **jitter** (ms) via MQTT auto-discovery, not only DNS up/down.
-- **Configurable probe target** — set `probe_target`, `interval_ms`, `samples`, and `timeout_ms` over MQTT (`homeassistant/poop_monitor/command/network_config`); settings persist in NVS.
-- **New HA entities**: `network_latency`, `network_jitter`, `network_probe_target` (plus matching fields on the consolidated status JSON).
-- **Module**: `src/network_metrics.h/.cpp` integrated into the main loop and MQTT status/discovery path.
-- **Docs**: README entity list and configuration examples updated.
-
----
-
-## Unreleased
-
-- **Configurable heartbeat endpoint** - Replaced hard-coded `apiEndpoint` (`/heartbeat/poop`) with `heartbeatBaseUrl`, `heartbeatDeviceId`, and optional `heartbeatPath` override (`getHeartbeatEndpoint()`).
-- **notification-api contract docs** - Added `docs/HEARTBEAT.md` describing the HTTP GET contract, silence-timeout behavior, and a generic `/health` example.
-
-## 2.10.0 - Secondary WiFi / multi-SSID self-healing (#28)
-
-- **Primary + secondary SSID config** via `WIFI_SSID` / `WIFI_SSID_SECONDARY` (and passwords) in credentials; empty secondary disables multi-SSID.
-- **Boot and runtime failover** to secondary when primary cannot connect.
-- **Automatic recovery to primary** while on secondary (periodic probe every ~5 minutes).
-- **HA/MQTT**: `wifi_ssid` and `wifi_network` sensors; status JSON includes `wifi_ssid`, `wifi_network`, `wifi_secondary_configured`.
-- **Web `/status`**: same active SSID / role fields.
-- New module: `src/wifi_manager.h` / `src/wifi_manager.cpp`.
-
----
+- ECDSA P-256 signature verification before OTA apply (`src/ota_crypto.*`, `src/ota_manager.*`)
+- Optional AES-256-CTR encrypted packages on HTTP signed OTA (port 8267)
+- Failed verification restores running boot partition — previous firmware stays bootable
+- Works with existing OTA rollback protection after a signed image is accepted
+- Key generation / signing scripts: `scripts/generate_ota_keys.py`, `scripts/sign_firmware.py`
+- Documentation: `docs/OTA_SIGNING.md`
+- Public key config: `src/ota_signing_config.h`
 
 ## 2.6.2 - OTA Rollback Protection + v2.6.1 Merged Features
 

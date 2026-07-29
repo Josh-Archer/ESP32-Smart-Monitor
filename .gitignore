@@ -49,6 +49,13 @@ libraries/*
 src/credentials_private.h
 src/credentials.cpp
 
+# OTA signing private material (public key lives in src/ota_signing_config.h)
+keys/
+**/ota_private.pem
+**/ota_aes.key
+*.signed.bin
+*.encrypted.bin
+
 # Environment specific files
 .env
 secrets.h

@@ -12,6 +12,14 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 - **📊 Active SSID in HA/MQTT** - New `wifi_ssid` and `wifi_network` (primary/secondary) entities and status JSON fields
 - **🌐 Web status API** - `/status` reports active SSID, network role, and whether secondary is configured
 
+### Signed / Encrypted OTA Updates
+
+- **🔐 ECDSA P-256 signature verification** before applying sketch OTA images
+- **📦 Optional AES-256-CTR encryption** for the HTTP signed OTA path (port 8267)
+- **🛡️ Failed verification keeps previous firmware bootable** (boot partition restored; no reboot into bad image)
+- **↩️ Compatible with existing rollback** after accepted updates (boot-failure recovery unchanged)
+- **📖 Key provisioning & signing docs**: [docs/OTA_SIGNING.md](docs/OTA_SIGNING.md)
+
 ### 2.6.2 - OTA Rollback Protection
 
 - **🔄 Automatic OTA Rollback** - Firmware automatically rolls back to previous version after 10 consecutive boot failures
@@ -60,6 +68,7 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 
 - 📡 WiFi connectivity with custom DNS configuration, multi-SSID failover, and primary recovery
 - 🔄 OTA (Over-The-Air) firmware updates with **automatic rollback protection**
+- 🔐 **Signed OTA** - ECDSA P-256 verification before apply; optional AES-256 encrypted packages
 - 🛡️ **Smart Boot Failure Recovery** - Automatic rollback after 10 consecutive boot failures
 - 🏠 **Home Assistant Integration** - MQTT auto-discovery with 12+ sensors and controls
 - 📊 **Real-time MQTT Publishing** - Device status, WiFi signal, DNS health, uptime tracking
@@ -238,6 +247,18 @@ The ESP32 features intelligent DNS monitoring with configurable alerting to prev
 3. **Intelligent Alerting**: Only alerts after 5 minutes down, then every 30 minutes
 4. **Manual Override**: Web interface and Home Assistant allow pausing alerts
 5. **Auto-Resume**: Alerts automatically resume when DNS recovers
+
+## Signed / Encrypted OTA
+
+Firmware updates can be **signed** (and optionally **encrypted**) so unauthorized images are rejected before they become bootable.
+
+1. Generate keys: `python scripts/generate_ota_keys.py --aes`
+2. Embed public key arrays in `src/ota_signing_config.h` (see generated `keys/ota_public.h`)
+3. Flash once over serial so the device trusts your public key
+4. Sign each build: `python scripts/sign_firmware.py .pio/build/.../firmware.bin`
+5. Upload the `.signed.bin` via espota, or POST an encrypted package to port **8267**
+
+Full workflow, package formats, and failure behaviour: **[docs/OTA_SIGNING.md](docs/OTA_SIGNING.md)**.
 
 ## OTA Rollback Protection
 

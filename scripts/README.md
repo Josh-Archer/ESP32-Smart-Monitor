@@ -24,6 +24,12 @@ pio-help
 - `ping-device` - Test device connectivity
 - `commit-version` - Git commit with version tagging
 
+### OTA signing helpers
+- `generate_ota_keys.py` - Create ECDSA P-256 keypair (+ optional AES key)
+- `sign_firmware.py` - Append ECDSA signature (optional AES-CTR encrypt)
+
+See [docs/OTA_SIGNING.md](../docs/OTA_SIGNING.md).
+
 ## Platform-Specific Scripts
 
 ### Windows (PowerShell)

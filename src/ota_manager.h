@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-// Initialize OTA functionality
+// Initialize OTA functionality (ArduinoOTA + optional signed HTTP OTA)
 void initOTA();
 
 // Handle OTA updates (call in loop)
@@ -23,5 +23,8 @@ int getBootFailureCount();
 
 // Reset boot failure counter
 void resetBootFailureCount();
+
+// Signing / encryption status string for diagnostics
+const char* getOtaSigningStatus();
 
 #endif
