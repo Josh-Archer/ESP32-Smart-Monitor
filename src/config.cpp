@@ -13,8 +13,11 @@ const char* otaPassword = OTA_PASSWORD;
 const char* deviceName = "poop-monitor";
 
 // DNS Configuration
-IPAddress primaryDNS(192, 168, 68, 51);    // Your custom DNS server
-IPAddress fallbackDNS(192, 168, 68, 51);         
+// Use DISTINCT servers so fallback is real. Same IP for both makes failover a no-op.
+// Recommended: primary = local recursive/filter (Pi-hole, AdGuard, etc.);
+//              fallback = a second resolver (another local box or a public DNS).
+IPAddress primaryDNS(192, 168, 68, 51);  // Local DNS example (e.g. Pi-hole)
+IPAddress fallbackDNS(1, 1, 1, 1);      // Distinct fallback example (Cloudflare)
 
 // Pushover Configuration (from credentials.h)
 const char* pushoverToken = PUSHOVER_TOKEN;

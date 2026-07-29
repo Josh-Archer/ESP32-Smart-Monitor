@@ -130,6 +130,11 @@ void setup() {
     WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), primaryDNS, fallbackDNS);
     Serial.printf("[%10lu ms] [DNS] Configured DNS - Primary: %s, Fallback: %s\r\n", 
                   millis(), primaryDNS.toString().c_str(), fallbackDNS.toString().c_str());
+    if (primaryDNS == fallbackDNS) {
+      Serial.printf("[%10lu ms] [DNS] WARNING: primary and fallback DNS are identical (%s); "
+                    "fallback is a no-op. Configure distinct servers in config.cpp.\r\n",
+                    millis(), primaryDNS.toString().c_str());
+    }
     
     // Test DNS resolution
     testDNSResolution();
