@@ -1,6 +1,14 @@
 # Recent Changes Summary
 
-# Recent Changes Summary
+## Network Latency & Jitter Sensors (#30)
+
+- **Network quality metrics for Home Assistant** — multi-sample HTTP RTT probes publish **latency** and **jitter** (ms) via MQTT auto-discovery, not only DNS up/down.
+- **Configurable probe target** — set `probe_target`, `interval_ms`, `samples`, and `timeout_ms` over MQTT (`homeassistant/poop_monitor/command/network_config`); settings persist in NVS.
+- **New HA entities**: `network_latency`, `network_jitter`, `network_probe_target` (plus matching fields on the consolidated status JSON).
+- **Module**: `src/network_metrics.h/.cpp` integrated into the main loop and MQTT status/discovery path.
+- **Docs**: README entity list and configuration examples updated.
+
+---
 
 ## Unreleased
 

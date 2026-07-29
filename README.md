@@ -53,8 +53,9 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 - 📡 WiFi connectivity with custom DNS configuration and fallback
 - 🔄 OTA (Over-The-Air) firmware updates with **automatic rollback protection**
 - 🛡️ **Smart Boot Failure Recovery** - Automatic rollback after 10 consecutive boot failures
-- 🏠 **Home Assistant Integration** - MQTT auto-discovery with 12+ sensors and controls
-- 📊 **Real-time MQTT Publishing** - Device status, WiFi signal, DNS health, uptime tracking
+- 🏠 **Home Assistant Integration** - MQTT auto-discovery with 15+ sensors and controls
+- 📊 **Real-time MQTT Publishing** - Device status, WiFi signal, DNS health, network latency/jitter, uptime tracking
+- 📈 **Network Latency & Jitter** - Configurable HTTP probe target with HA sensors for RTT quality
 - 📋 **Live Telnet Logs in HA** - View device console output in Home Assistant
 - 🎛️ **Remote Device Control** - Reboot and alert management from Home Assistant
 - 🖥️ **Live telnet console streaming** to web interface with syntax highlighting
@@ -111,6 +112,7 @@ src/
 ├── telnet.h/.cpp         # Telnet server with MQTT log publishing
 ├── notifications.h/.cpp  # Pushover alerts
 ├── dns_manager.h/.cpp    # DNS testing
+├── network_metrics.h/.cpp # Network latency/jitter probes
 ├── ota_manager.h/.cpp    # OTA updates
 ├── system_utils.h/.cpp   # System utilities (reboot, etc.)
 ├── web_server.h/.cpp     # Web API endpoints
@@ -150,6 +152,9 @@ Once configured, these entities automatically appear in Home Assistant:
 - **WiFi Signal Strength** - Real-time signal in dBm and percentage  
 - **WiFi Quality** - Human-readable WiFi quality (Excellent/Good/Ok/Poor)
 - **DNS Connectivity** - Binary sensor showing DNS working/failed
+- **Network Latency** - Mean HTTP RTT to the configured probe target (ms)
+- **Network Jitter** - Mean absolute difference between consecutive RTT samples (ms)
+- **Network Probe Target** - Active probe URL used for latency/jitter
 - **Device Uptime** - Uptime tracking with duration device class
 - **Free Memory** - Memory usage monitoring in bytes
 - **Free Memory Percent** - Memory usage as a percentage
@@ -165,7 +170,7 @@ Once configured, these entities automatically appear in Home Assistant:
 **Features:**
 - **Availability Monitoring** - Home Assistant tracks device online/offline status
 - **Real-time Data** - Status published every 30 seconds for live monitoring
-- **Historical Graphs** - WiFi signal, uptime, memory usage over time
+- **Historical Graphs** - WiFi signal, latency/jitter, uptime, memory usage over time
 - **Automation Ready** - Use any sensor for Home Assistant automations
 
 ### MQTT Topics
@@ -177,17 +182,80 @@ The device uses standard Home Assistant discovery topics:
 - **Availability**: `homeassistant/sensor/poop_monitor/availability`
 - **Telnet Logs**: `homeassistant/sensor/poop_monitor/telnet`
 - **Commands**: `homeassistant/poop_monitor/command/*`
+  - `.../reboot`, `.../alerts`, `.../dns_config`, `.../network_config`
 
 ### Home Assistant Dashboard Example
 
 Create dashboards with:
 - Real-time WiFi signal strength graphs
+- Network latency and jitter graphs
 - DNS connectivity status indicators  
 - Device uptime and memory usage charts
 - Live telnet log display
 - Alert control switches
 - Reboot button for remote management
 - Automation triggers for device offline alerts
+
+## Network Latency & Jitter
+
+In addition to DNS up/down checks, the device measures **network quality** via multi-sample HTTP RTT probes and publishes results to Home Assistant.
+
+### What is measured
+
+| Metric | HA entity | Description |
+|--------|-----------|-------------|
+| Latency | `network_latency` | Mean round-trip time (ms) across successful samples |
+| Jitter | `network_jitter` | Mean absolute difference between consecutive sample RTTs (ms) |
+| Probe target | `network_probe_target` | Active `http://` URL used for probing |
+
+Values are also included in the consolidated status JSON (`network_latency_ms`, `network_jitter_ms`, probe config fields).
+
+### Defaults
+
+- **Probe target**: `http://httpbin.org/ip` (HTTP only — avoids TLS heap cost on ESP32-C3)
+- **Interval**: 60 seconds
+- **Samples per probe**: 4
+- **Per-request timeout**: 3000 ms
+
+Configuration is persisted in NVS (`net_metrics` namespace) and survives reboots.
+
+### Configure via MQTT
+
+Publish JSON to `homeassistant/poop_monitor/command/network_config` (omit keys you want to leave unchanged):
+
+```json
+{
+  "probe_target": "http://connectivitycheck.gstatic.com/generate_204",
+  "interval_ms": 60000,
+  "samples": 4,
+  "timeout_ms": 3000
+}
+```
+
+Rules:
+
+- `probe_target` must be a valid `http://` URL (HTTPS is rejected)
+- `interval_ms`: 10s–24h
+- `samples`: 2–10
+- `timeout_ms`: 500–15000
+- After a successful config update the device runs an immediate probe and republishes sensors
+
+### Home Assistant example
+
+```yaml
+# Alert when latency is consistently high
+automation:
+  - alias: "Poop monitor high latency"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.esp32_poop_monitor_network_latency
+        above: 500
+        for: "00:05:00"
+    action:
+      - service: notify.mobile_app
+        data:
+          message: "ESP32 network latency is high"
+```
 
 ## Smart DNS Monitoring
 
