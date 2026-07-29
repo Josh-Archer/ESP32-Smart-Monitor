@@ -75,7 +75,12 @@ void handleStatus() {
   // Heartbeat
   doc["last_heartbeat_success"] = lastSuccessfulHeartbeat;
   doc["last_heartbeat_code"] = lastHeartbeatResponseCode;
-  doc["heartbeat_endpoint"] = apiEndpoint;
+  doc["heartbeat_endpoint"] = getHeartbeatEndpoint();
+  doc["heartbeat_base_url"] = heartbeatBaseUrl;
+  doc["heartbeat_device_id"] = heartbeatDeviceId;
+  doc["heartbeat_path"] = (heartbeatPath != nullptr && heartbeatPath[0] != '\0')
+                              ? heartbeatPath
+                              : "(derived /heartbeat/{device_id})";
 
   unsigned long timeSinceLastSuccessMs = millis() - lastSuccessfulHeartbeat;
   doc["time_since_last_success_ms"] = timeSinceLastSuccessMs;

@@ -209,7 +209,7 @@ void loop() {
 
   WiFiClient client;
   HTTPClient http;
-  http.begin(client, apiEndpoint);
+  http.begin(client, getHeartbeatEndpoint());
   http.setTimeout(10000);
   
   int httpCode = http.GET();

@@ -1,5 +1,6 @@
 #include "config.h"
 #include "credentials.h"
+#include <cstdio>
 
 const char* firmwareVersion = "2.9.0";
 
@@ -7,8 +8,33 @@ const char* firmwareVersion = "2.9.0";
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 
-// API Configuration
-const char* apiEndpoint = "http://notifications.archerfamily.io/heartbeat/poop";
+// Heartbeat / notification-api configuration
+// Contract: device issues HTTP GET to the resolved endpoint; success = HTTP 200.
+// notification-api (legacy): GET /heartbeat/{device_id}  e.g. /heartbeat/poop
+// Generic health example: set heartbeatPath = "/health" (or any path your probe accepts).
+// Base URL must not include a trailing slash.
+const char* heartbeatBaseUrl = "http://notifications.archerfamily.io";
+const char* heartbeatDeviceId = "poop";
+// Leave empty to use /heartbeat/{heartbeatDeviceId}. Override for non-notification-api targets.
+const char* heartbeatPath = "";
+
+static char heartbeatEndpointBuf[256];
+static bool heartbeatEndpointReady = false;
+
+const char* getHeartbeatEndpoint() {
+  if (!heartbeatEndpointReady) {
+    if (heartbeatPath != nullptr && heartbeatPath[0] != '\0') {
+      snprintf(heartbeatEndpointBuf, sizeof(heartbeatEndpointBuf), "%s%s",
+               heartbeatBaseUrl, heartbeatPath);
+    } else {
+      snprintf(heartbeatEndpointBuf, sizeof(heartbeatEndpointBuf), "%s/heartbeat/%s",
+               heartbeatBaseUrl, heartbeatDeviceId);
+    }
+    heartbeatEndpointReady = true;
+  }
+  return heartbeatEndpointBuf;
+}
+
 const char* otaPassword = OTA_PASSWORD;
 const char* deviceName = "poop-monitor";
 
