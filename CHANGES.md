@@ -15,6 +15,17 @@
 - **Configurable heartbeat endpoint** - Replaced hard-coded `apiEndpoint` (`/heartbeat/poop`) with `heartbeatBaseUrl`, `heartbeatDeviceId`, and optional `heartbeatPath` override (`getHeartbeatEndpoint()`).
 - **notification-api contract docs** - Added `docs/HEARTBEAT.md` describing the HTTP GET contract, silence-timeout behavior, and a generic `/health` example.
 
+## 2.10.0 - Secondary WiFi / multi-SSID self-healing (#28)
+
+- **Primary + secondary SSID config** via `WIFI_SSID` / `WIFI_SSID_SECONDARY` (and passwords) in credentials; empty secondary disables multi-SSID.
+- **Boot and runtime failover** to secondary when primary cannot connect.
+- **Automatic recovery to primary** while on secondary (periodic probe every ~5 minutes).
+- **HA/MQTT**: `wifi_ssid` and `wifi_network` sensors; status JSON includes `wifi_ssid`, `wifi_network`, `wifi_secondary_configured`.
+- **Web `/status`**: same active SSID / role fields.
+- New module: `src/wifi_manager.h` / `src/wifi_manager.cpp`.
+
+---
+
 ## 2.6.2 - OTA Rollback Protection + v2.6.1 Merged Features
 
 **Major Release: Automatic Firmware Rollback Protection + Build Optimization**

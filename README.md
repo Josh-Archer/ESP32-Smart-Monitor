@@ -2,7 +2,15 @@
 
 An ESP32-based monitoring device with **Home Assistant integration**, modern web interface, live console streaming, smart DNS monitoring, and comprehensive automation tools.
 
-## What's New (v2.9.0)
+## What's New (v2.10.0)
+
+### 2.10.0 - Secondary WiFi / multi-SSID self-healing
+
+- **📡 Multi-SSID WiFi** - Configure primary + optional secondary SSID/password in credentials
+- **🔄 Automatic failover** - Falls back to secondary when primary is unavailable (boot and runtime)
+- **🏠 Primary recovery** - While on secondary, periodically probes primary and switches back when available
+- **📊 Active SSID in HA/MQTT** - New `wifi_ssid` and `wifi_network` (primary/secondary) entities and status JSON fields
+- **🌐 Web status API** - `/status` reports active SSID, network role, and whether secondary is configured
 
 ### 2.6.2 - OTA Rollback Protection
 
@@ -32,8 +40,8 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 - **Improved Memory Reporting** - Free memory now shown as both formatted string and percent (`free_memory_percent`).
 - **Last Heartbeat MQTT State** - Home Assistant now receives a formatted uptime for the last heartbeat.
 - **Enhanced MQTT Metrics** - More detailed and human-friendly metrics for Home Assistant.
-- **CI/CD Improvements** - GitHub Actions workflow for build/tag automation; CI copies `credentials.template.h` for dummy secrets.
-- **Credentials split** - Secrets in gitignored `credentials_private.h` with compile-time macro checks; non-secrets in `config.cpp`.
+- **CI/CD Improvements** - GitHub Actions workflow for build/tag automation and CI credentials template.
+- **Credentials Header** - Added `src/credentials.h` for standardized credential imports.
 - **Bug Fixes** - JSON escape padding, reboot flag storage, and cache-bust emoji.
 
 ---
@@ -50,7 +58,7 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 
 ## Features
 
-- 📡 WiFi connectivity with custom DNS configuration and fallback
+- 📡 WiFi connectivity with custom DNS configuration, multi-SSID failover, and primary recovery
 - 🔄 OTA (Over-The-Air) firmware updates with **automatic rollback protection**
 - 🛡️ **Smart Boot Failure Recovery** - Automatic rollback after 10 consecutive boot failures
 - 🏠 **Home Assistant Integration** - MQTT auto-discovery with 12+ sensors and controls
@@ -69,72 +77,53 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 
 ## Configuration Setup
 
-Secrets and non-secret config are **split on purpose** so you do not flash a device with the wrong (or empty) credential path.
+**Simple Setup**: All configuration is now in `src/config.cpp` - no separate credentials files needed!
 
-| What | Where | Git |
-|------|--------|-----|
-| **Secrets** (WiFi, OTA password, Pushover, MQTT auth) | `src/credentials_private.h` | **gitignored** — never commit |
-| **Non-secrets** (device name, MQTT host/port, DNS, API URLs) | `src/config.cpp` | committed |
+### Edit Configuration
 
-### 1. Create private credentials (required)
+Edit `src/config.cpp` with your actual values:
 
-```bash
-# From the repo root
-cp credentials.template.h src/credentials_private.h
-# Then edit src/credentials_private.h and replace every YOUR_* value
-```
-
-PowerShell:
-
-```powershell
-Copy-Item credentials.template.h src/credentials_private.h
-# Edit src/credentials_private.h — fill in YOUR_* placeholders
-```
-
-`src/credentials.h` enforces the required macros at **compile time** (`#error` if any are missing). CI copies the same template with dummy values so PRs build without real secrets.
-
-Example `src/credentials_private.h`:
+Copy `credentials.template.cpp` to `src/credentials.cpp` and set secrets (file is gitignored):
 
 ```cpp
-#pragma once
-#define WIFI_SSID       "MyNetwork"
-#define WIFI_PASSWORD   "secret"
-#define OTA_PASSWORD    "ota-secret"
-#define PUSHOVER_TOKEN  "app-token"
-#define PUSHOVER_USER   "user-key"
-#define MQTT_USER       "mqtt-user"   // or ""
-#define MQTT_PASSWORD   "mqtt-pass"   // or ""
+// WiFi Configuration
+const char* WIFI_SSID = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+// Optional secondary network for self-healing (leave "" to disable)
+const char* WIFI_SSID_SECONDARY = "YOUR_BACKUP_SSID";
+const char* WIFI_PASSWORD_SECONDARY = "YOUR_BACKUP_PASSWORD";
+
+// OTA / Pushover / MQTT — see credentials.template.cpp
 ```
 
-### 2. Edit non-secret config
+Public config (DNS, MQTT broker host, device name, etc.) lives in `src/config.cpp`.
 
-Edit `src/config.cpp` for broker host, DNS, device name, etc.:
+#### Multi-SSID self-healing
 
-```cpp
-const char* mqttServer = "192.168.1.100";  // MQTT broker IP or hostname
-const int mqttPort = 1883;
-const char* deviceName = "poop-monitor";
-// DNS, API endpoint, etc.
-```
+| Behavior | Detail |
+|----------|--------|
+| Boot | Connects to **primary** first; if that fails within ~30s and secondary is set, tries **secondary** |
+| Disconnect | Reconnects preferred network, then **failovers** to the other |
+| Recovery | When on secondary, probes primary about every **5 minutes** and switches back if available |
+| Disable secondary | Set `WIFI_SSID_SECONDARY` to `""` |
 
-Do **not** put WiFi passwords or tokens in `config.cpp` — they belong in `credentials_private.h`.
+Home Assistant entities: **WiFi SSID** (`wifi_ssid`) and **WiFi Network Role** (`wifi_network`: `primary` / `secondary` / `none`).
 
 ### File Structure
 
 ```
-credentials.template.h    # Template → copy to src/credentials_private.h
 src/
-├── main.cpp
-├── credentials.h         # Compile-time checks; includes credentials_private.h
-├── credentials_private.h # YOUR secrets (gitignored; not in repo)
-├── config.h/.cpp         # Non-secret config + wires credential macros
-├── telnet.h/.cpp
-├── notifications.h/.cpp
-├── dns_manager.h/.cpp
-├── ota_manager.h/.cpp
-├── system_utils.h/.cpp
-├── web_server.h/.cpp
-└── mqtt_manager.h/.cpp
+├── main.cpp              # Main program
+├── config.h/.cpp         # All configuration (WiFi, MQTT, Pushover, etc.)
+├── credentials.h         # Credential declarations (implement in credentials.cpp)
+├── wifi_manager.h/.cpp   # Multi-SSID connect, failover, primary recovery
+├── telnet.h/.cpp         # Telnet server with MQTT log publishing
+├── notifications.h/.cpp  # Pushover alerts
+├── dns_manager.h/.cpp    # DNS testing
+├── ota_manager.h/.cpp    # OTA updates
+├── system_utils.h/.cpp   # System utilities (reboot, etc.)
+├── web_server.h/.cpp     # Web API endpoints
+└── mqtt_manager.h/.cpp   # MQTT & Home Assistant integration
 ```
 
 ## Home Assistant Integration
@@ -157,9 +146,9 @@ To get MQTT working with Home Assistant:
    - Create a username/password or leave empty for no authentication
 
 3. **Update ESP32 Config**:
-   - Set `mqttServer` / `mqttPort` in `src/config.cpp` to your Home Assistant broker
-   - Set `MQTT_USER` / `MQTT_PASSWORD` in `src/credentials_private.h` if the broker requires auth
-   - Use `#define MQTT_USER ""` and `#define MQTT_PASSWORD ""` if no authentication
+   - Set `mqttServer` to your Home Assistant IP address
+   - Set `mqttUser` and `mqttPassword` if you configured authentication
+   - Leave `mqttUser` and `mqttPassword` empty (`""`) if no authentication
 
 ### Home Assistant Entities
 
@@ -169,6 +158,8 @@ Once configured, these entities automatically appear in Home Assistant:
 - **Device Status** - Overall status with JSON attributes
 - **WiFi Signal Strength** - Real-time signal in dBm and percentage  
 - **WiFi Quality** - Human-readable WiFi quality (Excellent/Good/Ok/Poor)
+- **WiFi SSID** - Active SSID name (primary or secondary)
+- **WiFi Network Role** - `primary`, `secondary`, or `none`
 - **DNS Connectivity** - Binary sensor showing DNS working/failed
 - **Device Uptime** - Uptime tracking with duration device class
 - **Free Memory** - Memory usage monitoring in bytes
@@ -421,10 +412,9 @@ deploy-ota -Environment esp32-c3-devkitm-1-both
 
 ### Quick Start
 
-1. **Secrets**: `cp credentials.template.h src/credentials_private.h` and fill in WiFi/OTA/Pushover/MQTT auth
-2. **Non-secrets**: Edit `src/config.cpp` (MQTT host, DNS, device name, etc.)
-3. **Build and upload**: `pio-upload-ota` (or `./upload_and_monitor.sh`)
-4. **Access device**:
+1. **Configure device**: Edit `src/config.cpp` with your WiFi, MQTT, and other settings
+2. **Build and upload**: `pio-upload-ota` (or `./upload_and_monitor.sh`)
+3. **Access device**: 
    - **MQTT-only**: Home Assistant auto-discovery
    - **WebServer/Both**: `http://poop-monitor.local/`
 
@@ -496,13 +486,12 @@ curl http://poop-monitor.local/status | python3 -m json.tool
 **Build and deployment issues:**
 
 - Use `./upload_and_monitor.sh` for complete build-to-monitoring workflow
-- If the compiler reports `Missing WIFI_SSID` (or similar): copy `credentials.template.h` → `src/credentials_private.h` and set every macro
-- Non-secret settings (MQTT host, DNS) live in `src/config.cpp`; secrets must not
+- Check that all configuration values in `src/config.cpp` are set correctly
 
 
 ## Development & CI
 
-- **GitHub Actions Workflow:** Automated build and tag for releases; builds use `credentials.template.h` as dummy secrets (never real credentials).
+- **GitHub Actions Workflow:** Automated build and tag for releases, with CI credentials template for safe builds.
 - **🤖 Smart Version Tagging:** Intelligent semantic versioning based on commit analysis and PR content.
   - Analyzes changes to determine appropriate version increments (major/minor/patch)
   - Automatically updates `src/config.cpp` and `README.md` with new versions
@@ -532,8 +521,8 @@ force-version "2.5.0"  # Force specific version
 
 ## Security Notes
 
-- Store secrets only in `src/credentials_private.h` (gitignored); never commit real tokens/passwords
-- Keep non-secret config in `src/config.cpp`
-- Use strong passwords for OTA updates and MQTT authentication
+- Store sensitive values in `src/config.cpp` - consider using environment variables
+- Use strong passwords for OTA updates and MQTT authentication  
 - Consider using WPA3 for WiFi if available
+- Pushover tokens should be kept secret
 - MQTT credentials should match your Home Assistant MQTT user configuration

@@ -5,6 +5,7 @@
 #include "telnet.h"
 #include "system_utils.h"
 #include "dns_manager.h"
+#include "wifi_manager.h"
 
 #ifdef ENABLE_MQTT
 #include "mqtt_manager.h"
@@ -65,6 +66,9 @@ void handleStatus() {
   doc["wifi_rssi"] = WiFi.RSSI();
   doc["free_heap"] = ESP.getFreeHeap();
   doc["wifi_connected"] = WiFi.isConnected();
+  doc["wifi_ssid"] = getActiveSSID();
+  doc["wifi_network"] = getActiveNetworkRole();
+  doc["wifi_secondary_configured"] = isSecondaryWiFiConfigured();
 
   // DNS
   doc["primary_dns"] = primaryDNS.toString();

@@ -5,10 +5,10 @@
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include "config.h"
+#include "wifi_manager.h"
 #include "telnet.h"
 #include "notifications.h"
 #include "dns_manager.h"
-#include "network_metrics.h"
 #include "ota_manager.h"
 #include "system_utils.h"
 
@@ -111,37 +111,17 @@ void setup() {
 
   // Load persisted DNS timing configuration (after preferences system ready)
   loadDNSConfigFromStorage();
-  // Load network latency/jitter probe configuration
-  loadNetworkMetricsConfigFromStorage();
 
-  // Connect to WiFi
-  WiFi.begin(ssid, password);
-  Serial.printf("[%10lu ms] Connecting to WiFi: %s\r\n", millis(), ssid);
-
-  // Wait for WiFi with timeout
-  int wifiTimeout = 0;
-  while (WiFi.status() != WL_CONNECTED && wifiTimeout < 60) {
-    delay(500);
-    Serial.print(".");
-    wifiTimeout++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\r\n[%10lu ms] Connected! IP: %s\r\n", millis(), WiFi.localIP().toString().c_str());
-    
-    // Configure custom DNS servers
-    WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), primaryDNS, fallbackDNS);
-    Serial.printf("[%10lu ms] [DNS] Configured DNS - Primary: %s, Fallback: %s\r\n", 
-                  millis(), primaryDNS.toString().c_str(), fallbackDNS.toString().c_str());
-    if (primaryDNS == fallbackDNS) {
-      Serial.printf("[%10lu ms] [DNS] WARNING: primary and fallback DNS are identical (%s); "
-                    "fallback is a no-op. Configure distinct servers in config.cpp.\r\n",
-                    millis(), primaryDNS.toString().c_str());
+  // Connect to WiFi (primary, then optional secondary failover)
+  if (initWiFi()) {
+    Serial.printf("[%10lu ms] [WiFi] Active SSID: %s (%s)\r\n",
+                  millis(), getActiveSSID(), getActiveNetworkRole());
+    if (isSecondaryWiFiConfigured()) {
+      Serial.printf("[%10lu ms] [WiFi] Secondary SSID configured: %s\r\n",
+                    millis(), ssidSecondary);
     }
-    
-    // Test DNS resolution
+    // Test DNS resolution after custom DNS applied by wifi manager
     testDNSResolution();
-    
   } else {
     Serial.printf("\r\n[%10lu ms] [ERROR] WiFi connection failed!\r\n", millis());
     return;
@@ -183,9 +163,6 @@ void loop() {
 #ifdef ENABLE_MQTT
   handleMQTTLoop();  // Handle MQTT connection and publishing
 #endif
-
-  // Periodic network latency/jitter probes (configurable target/interval)
-  handleNetworkMetrics();
   
   // Check for reboot flag (set by web interface)
   if (checkRebootFlag()) {
@@ -199,9 +176,9 @@ void loop() {
   
   unsigned long now = millis();
 
-  if (WiFi.status() != WL_CONNECTED) {
-    telnetPrintf("[%10lu ms] WiFi disconnected. Attempting reconnect...\r\n", now);
-    WiFi.begin(ssid, password);
+  // Multi-SSID self-healing: reconnect, failover, recover to primary
+  handleWiFi();
+  if (!isWiFiConnected()) {
     delay(2000);
     return;
   }
@@ -215,7 +192,7 @@ void loop() {
 
   WiFiClient client;
   HTTPClient http;
-  http.begin(client, getHeartbeatEndpoint());
+  http.begin(client, apiEndpoint);
   http.setTimeout(10000);
   
   int httpCode = http.GET();

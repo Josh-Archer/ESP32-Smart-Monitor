@@ -2,7 +2,7 @@
 
 ## Core Reliability & Performance
 - OTA Rollback Support: Allow firmware rollback if a new OTA update fails to boot or connect.
-- Self-Healing WiFi: Automatic WiFi reconnection and fallback to secondary networks if the primary fails.
+- ~~Self-Healing WiFi: Automatic WiFi reconnection and fallback to secondary networks if the primary fails.~~ **Done (v2.10.0 / #28)**
 - Adaptive DNS Monitoring: Use AI/ML to detect patterns in DNS failures and proactively switch DNS or alert users before outages.
 
 ## Web & User Experience

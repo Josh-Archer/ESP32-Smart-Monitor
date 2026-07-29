@@ -1,3 +1,5 @@
 - Rollback on failure 
 - Usage bars for memory/cpu/flash
 - upload alert and finish alert
+- Multi-SSID self-healing (primary + secondary WiFi, failover, recover to primary)
+- HA/MQTT active SSID + network role sensors

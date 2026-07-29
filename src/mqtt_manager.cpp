@@ -6,6 +6,7 @@
 #include "dns_manager.h"
 #include "network_metrics.h"
 #include "system_utils.h"
+#include "wifi_manager.h"
 #include <WiFi.h>
 #include <math.h>
 
@@ -44,9 +45,11 @@ static String getMemoryUsage() {
 
 // Publish all sensor states (not just discovery)
 static void publishMetricsIndividual() {
-    // WiFi Signal
+    // WiFi Signal + active SSID
     mqttClient.publish("homeassistant/sensor/poop_monitor/wifi_signal", String(WiFi.RSSI()).c_str(), false);
     mqttClient.publish("homeassistant/sensor/poop_monitor/wifi_quality", classifyWiFiSignal(WiFi.RSSI()), false);
+    mqttClient.publish("homeassistant/sensor/poop_monitor/wifi_ssid", getActiveSSID(), false);
+    mqttClient.publish("homeassistant/sensor/poop_monitor/wifi_network", getActiveNetworkRole(), false);
     // DNS
     extern bool isDNSWorking;
     mqttClient.publish("homeassistant/sensor/poop_monitor/dns_status", isDNSWorking ? "ON" : "OFF", false);
@@ -165,11 +168,15 @@ void publishHomeAssistantDiscovery() {
         publishSensor("sensor", "status", "Status", 
                   nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:monitor");
     
-    // 2. WiFi Signal Strength
+    // 2. WiFi Signal Strength + active SSID (multi-SSID self-healing)
         publishSensor("sensor", "wifi_signal", "WiFi Signal",
                   "dBm", "signal_strength", "homeassistant/sensor/poop_monitor/wifi_signal", "mdi:wifi");
         publishSensor("sensor", "wifi_quality", "WiFi Quality",
                   nullptr, nullptr, "homeassistant/sensor/poop_monitor/wifi_quality", "mdi:wifi");
+        publishSensor("sensor", "wifi_ssid", "WiFi SSID",
+                  nullptr, nullptr, "homeassistant/sensor/poop_monitor/wifi_ssid", "mdi:wifi-marker");
+        publishSensor("sensor", "wifi_network", "WiFi Network Role",
+                  nullptr, nullptr, "homeassistant/sensor/poop_monitor/wifi_network", "mdi:router-wireless");
     
     // 3. DNS Status (reads from consolidated status topic)
         publishSensor("binary_sensor", "dns", "DNS", 
@@ -267,6 +274,10 @@ void publishSensor(const char* component, const char* object_id, const char* nam
         configDoc["value_template"] = "{{ value | float }}";
     } else if (strcmp(object_id, "wifi_quality") == 0) {
         configDoc["value_template"] = "{{ value | default('unknown') }}";
+    } else if (strcmp(object_id, "wifi_ssid") == 0) {
+        configDoc["value_template"] = "{{ value | default('unknown') }}";
+    } else if (strcmp(object_id, "wifi_network") == 0) {
+        configDoc["value_template"] = "{{ value | default('none') }}";
     } else if (strcmp(object_id, "dns") == 0) {
         configDoc["value_template"] = "{{ 'ON' if value_json.dns_working else 'OFF' }}";
         configDoc["payload_on"] = "ON";
@@ -350,6 +361,9 @@ String getDeviceStatusJSON() {
     statusDoc["wifi_signal_dbm"] = WiFi.RSSI();
     statusDoc["wifi_signal_percentage"] = constrain(2 * (WiFi.RSSI() + 100), 0, 100);
     statusDoc["wifi_quality"] = classifyWiFiSignal(WiFi.RSSI());
+    statusDoc["wifi_ssid"] = getActiveSSID();
+    statusDoc["wifi_network"] = getActiveNetworkRole();
+    statusDoc["wifi_secondary_configured"] = isSecondaryWiFiConfigured();
     
     // System info
     statusDoc["uptime_ms"] = millis();
