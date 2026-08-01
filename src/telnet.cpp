@@ -1,6 +1,7 @@
 #include "telnet.h"
 #include <time.h>
 #include "config.h"
+#include "wifi_manager.h"
 #include "web_server.h" // For addToTelnetLogBuffer
 
 #ifdef ENABLE_MQTT
@@ -28,6 +29,10 @@ void handleTelnet() {
     telnetClient.println("=== ESP32 Telnet Console ===");
     telnetClient.printf("Device: %s | Version: %s\r\n", deviceName, firmwareVersion);
     telnetClient.printf("IP: %s | Uptime: %lu ms\r\n", WiFi.localIP().toString().c_str(), millis());
+    if (isWiFiConnected()) {
+      telnetClient.printf("WiFi SSID: %s (%s) | RSSI: %d dBm\r\n",
+                          getActiveSSID(), getActiveNetworkRole(), WiFi.RSSI());
+    }
     telnetClient.println("============================");
   }
 }

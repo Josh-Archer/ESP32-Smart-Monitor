@@ -7,9 +7,11 @@
 // Firmware version - increment this with each update
 extern const char* firmwareVersion;
 
-// WiFi Configuration
+// WiFi Configuration (primary + optional secondary for self-healing)
 extern const char* ssid;
 extern const char* password;
+extern const char* ssidSecondary;
+extern const char* passwordSecondary;
 
 // Heartbeat / notification-api configuration
 // Full URL is resolved at runtime by getHeartbeatEndpoint():
