@@ -185,6 +185,21 @@ Create dashboards with:
 
 The ESP32 features intelligent DNS monitoring with configurable alerting to prevent notification spam while ensuring you're informed of important network issues.
 
+### Recommended DNS topology
+
+Configure **two different** resolvers in `src/config.cpp` (`primaryDNS` and `fallbackDNS`):
+
+| Role | Recommendation | Example |
+|------|----------------|---------|
+| **Primary** | Local recursive or filtering DNS on your LAN | Pi-hole / AdGuard (`192.168.x.x`) |
+| **Fallback** | A second, independent resolver | Another local DNS host, or a public resolver (`1.1.1.1`, `8.8.8.8`, router DNS) |
+
+- Fallback only helps when it is **not** the same IP as primary. Identical values disable meaningful failover (the firmware treats that as a single server and skips critical dual-failure alerts).
+- Prefer a local primary for filtering/latency, and a distinct fallback so brief primary outages do not take the device fully offline.
+- Sample defaults use a local primary example and Cloudflare (`1.1.1.1`) as fallback — replace both with addresses that match your network.
+
+At boot, if primary and fallback are equal, the serial/telnet log emits a **WARNING** that fallback is a no-op.
+
 ### Key Features
 
 **🕐 Smart Timing Logic:**
