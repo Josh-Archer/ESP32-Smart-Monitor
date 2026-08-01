@@ -45,6 +45,8 @@ libraries/*
 !libraries/README.md
 
 # Sensitive configuration (credentials should NEVER be committed)
+# Copy credentials.template.h → src/credentials_private.h and fill in secrets.
+src/credentials_private.h
 src/credentials.cpp
 
 # Environment specific files
@@ -74,3 +76,4 @@ yarn-error.log*
 /data/*.gz
 /data/**/*.gz
 credentials.cpp
+credentials_private.h

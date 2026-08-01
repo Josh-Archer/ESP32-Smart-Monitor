@@ -67,7 +67,7 @@ def main():
             "files": [
                 ".github/copilot-instructions.md", ".github/workflows/build-and-tag.yml",
                 ".gitignore", ".vscode/arduino.json", ".vscode/extensions.json",
-                "CHANGES.md", "README.md", "credentials.template.cpp",
+                "CHANGES.md", "README.md", "credentials.template.cpp", "credentials.template.h",
                 "docs/VERSION_TAGGING.md", "features.md", "k8s/Dockerfile",
                 "k8s/deployment.yaml", "scripts/version_manager.py", "scripts/deploy_web.sh",
                 "src/config.cpp", "src/config.h", "src/main.cpp", "src/mqtt_manager.cpp",
