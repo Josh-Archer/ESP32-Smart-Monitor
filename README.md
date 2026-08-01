@@ -2,7 +2,7 @@
 
 An ESP32-based monitoring device with **Home Assistant integration**, modern web interface, live console streaming, smart DNS monitoring, and comprehensive automation tools.
 
-## What's New (v2.10.0)
+## What's New (v3.0.0)
 
 ### 2.10.0 - Secondary WiFi / multi-SSID self-healing
 
