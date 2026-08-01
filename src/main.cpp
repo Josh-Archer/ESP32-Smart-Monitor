@@ -8,6 +8,7 @@
 #include "telnet.h"
 #include "notifications.h"
 #include "dns_manager.h"
+#include "network_metrics.h"
 #include "ota_manager.h"
 #include "system_utils.h"
 
@@ -110,6 +111,8 @@ void setup() {
 
   // Load persisted DNS timing configuration (after preferences system ready)
   loadDNSConfigFromStorage();
+  // Load network latency/jitter probe configuration
+  loadNetworkMetricsConfigFromStorage();
 
   // Connect to WiFi
   WiFi.begin(ssid, password);
@@ -180,6 +183,9 @@ void loop() {
 #ifdef ENABLE_MQTT
   handleMQTTLoop();  // Handle MQTT connection and publishing
 #endif
+
+  // Periodic network latency/jitter probes (configurable target/interval)
+  handleNetworkMetrics();
   
   // Check for reboot flag (set by web interface)
   if (checkRebootFlag()) {

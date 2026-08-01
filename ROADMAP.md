@@ -21,7 +21,7 @@
 - Remote Log Download: Download device logs from the web UI for troubleshooting.
 
 ## Advanced Monitoring
-- Network Latency & Jitter Tracking: Monitor and report network quality, not just connectivity.
+- ~~Network Latency & Jitter Tracking: Monitor and report network quality, not just connectivity.~~ **Done (#30)** — HTTP RTT latency/jitter sensors + configurable probe target.
 - Smart Power Management: Sleep/wake cycles based on network activity or Home Assistant commands.
 - Sensor Expansion: Plug-and-play support for additional sensors (e.g., temperature, humidity, air quality).
 

@@ -4,8 +4,10 @@
 #include "mqtt_manager.h"
 #include "config.h"
 #include "dns_manager.h"
+#include "network_metrics.h"
 #include "system_utils.h"
 #include <WiFi.h>
+#include <math.h>
 
 // MQTT client instances
 WiFiClient wifiClientMQTT;
@@ -48,6 +50,17 @@ static void publishMetricsIndividual() {
     // DNS
     extern bool isDNSWorking;
     mqttClient.publish("homeassistant/sensor/poop_monitor/dns_status", isDNSWorking ? "ON" : "OFF", false);
+    // Network latency / jitter (HTTP RTT probe)
+    if (networkLatencyMs >= 0.0f) {
+        mqttClient.publish("homeassistant/sensor/poop_monitor/network_latency",
+                           String(networkLatencyMs, 1).c_str(), false);
+    }
+    if (networkJitterMs >= 0.0f) {
+        mqttClient.publish("homeassistant/sensor/poop_monitor/network_jitter",
+                           String(networkJitterMs, 1).c_str(), false);
+    }
+    mqttClient.publish("homeassistant/sensor/poop_monitor/network_probe_target",
+                       networkProbeTarget, false);
     // Uptime seconds
     mqttClient.publish("homeassistant/sensor/poop_monitor/uptime", String(millis() / 1000).c_str(), false);
     // Free Memory
@@ -118,7 +131,8 @@ void connectToMQTT() {
         // Subscribe to command topics
         mqttClient.subscribe((String(MQTT_COMMAND_TOPIC) + "/reboot").c_str());
         mqttClient.subscribe((String(MQTT_COMMAND_TOPIC) + "/alerts").c_str());
-    mqttClient.subscribe((String(MQTT_COMMAND_TOPIC) + "/dns_config").c_str());
+        mqttClient.subscribe((String(MQTT_COMMAND_TOPIC) + "/dns_config").c_str());
+        mqttClient.subscribe((String(MQTT_COMMAND_TOPIC) + "/network_config").c_str());
         
         // Publish that we're online
         publishAvailability(true);
@@ -161,40 +175,52 @@ void publishHomeAssistantDiscovery() {
         publishSensor("binary_sensor", "dns", "DNS", 
                   nullptr, "connectivity", MQTT_STATUS_TOPIC, "mdi:dns");
     
-    // 4. Uptime (reads from consolidated status topic)
+    // 4. Network Latency (HTTP RTT mean)
+        publishSensor("sensor", "network_latency", "Network Latency",
+                  "ms", nullptr, "homeassistant/sensor/poop_monitor/network_latency", "mdi:timer-outline");
+    
+    // 5. Network Jitter (mean absolute consecutive sample delta)
+        publishSensor("sensor", "network_jitter", "Network Jitter",
+                  "ms", nullptr, "homeassistant/sensor/poop_monitor/network_jitter", "mdi:chart-timeline-variant");
+    
+    // 6. Network Probe Target (configured URL)
+        publishSensor("sensor", "network_probe_target", "Network Probe Target",
+                  nullptr, nullptr, "homeassistant/sensor/poop_monitor/network_probe_target", "mdi:target");
+    
+    // 7. Uptime (reads from consolidated status topic)
         publishSensor("sensor", "uptime", "Uptime", 
                   "s", "duration", MQTT_STATUS_TOPIC, "mdi:clock");
     
-    // 5. Memory Usage
+    // 8. Memory Usage
         publishSensor("sensor", "free_memory", "Free Memory",
                   nullptr, nullptr, "homeassistant/sensor/poop_monitor/memory", "mdi:memory");
     
-    // 6. Last Heartbeat Success
+    // 9. Last Heartbeat Success
         publishSensor("sensor", "last_heartbeat", "Last Heartbeat",
                   nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:heart-pulse");
     
-    // 7. IP Address (reads from consolidated status topic)
+    // 10. IP Address (reads from consolidated status topic)
         publishSensor("sensor", "ip_address", "IP Address", 
                   nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:ip");
     
-    // 8. Firmware Version (reads from consolidated status topic)
+    // 11. Firmware Version (reads from consolidated status topic)
         publishSensor("sensor", "firmware", "Firmware", 
                   nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:chip");
     
-    // 9. Alerts Status (reads from consolidated status topic)
+    // 12. Alerts Status (reads from consolidated status topic)
         publishSensor("binary_sensor", "alerts", "Alerts Enabled", 
                   nullptr, nullptr, MQTT_STATUS_TOPIC, "mdi:bell");
     
-    // 10. Telnet Log Sensor
+    // 13. Telnet Log Sensor
         publishSensor("sensor", "telnet_log", "Telnet Log", 
                   nullptr, nullptr, MQTT_TELNET_TOPIC, "mdi:console");
     
-    // 11. Alert Control Switch
+    // 14. Alert Control Switch
         publishSwitch("alert_switch", "Alert Control", 
                   (String(MQTT_COMMAND_TOPIC) + "/alerts").c_str(),
                   "homeassistant/sensor/poop_monitor/alerts", "mdi:bell");
     
-    // 12. Reboot Button
+    // 15. Reboot Button
         publishButton("reboot", "Reboot", 
                   (String(MQTT_COMMAND_TOPIC) + "/reboot").c_str(), "mdi:restart");
     
@@ -245,6 +271,14 @@ void publishSensor(const char* component, const char* object_id, const char* nam
         configDoc["value_template"] = "{{ 'ON' if value_json.dns_working else 'OFF' }}";
         configDoc["payload_on"] = "ON";
         configDoc["payload_off"] = "OFF";
+    } else if (strcmp(object_id, "network_latency") == 0) {
+        configDoc["value_template"] = "{{ value | float }}";
+        configDoc["state_class"] = "measurement";
+    } else if (strcmp(object_id, "network_jitter") == 0) {
+        configDoc["value_template"] = "{{ value | float }}";
+        configDoc["state_class"] = "measurement";
+    } else if (strcmp(object_id, "network_probe_target") == 0) {
+        configDoc["value_template"] = "{{ value | default('unknown') }}";
     } else if (strcmp(object_id, "uptime") == 0) {
         configDoc["value_template"] = "{{ (value_json.uptime_ms / 1000) | round(0) }}";
     } else if (strcmp(object_id, "free_memory") == 0) {
@@ -343,6 +377,26 @@ String getDeviceStatusJSON() {
     statusDoc["last_dns_check"] = lastDNSCheck;
     if (!isDNSWorking && dnsFailureStartTime > 0) {
         statusDoc["dns_down_duration_ms"] = millis() - dnsFailureStartTime;
+    }
+
+    // Network latency / jitter (HTTP RTT multi-sample probe)
+    statusDoc["network_probe_target"] = networkProbeTarget;
+    statusDoc["network_probe_interval_ms"] = networkProbeIntervalMs;
+    statusDoc["network_probe_samples"] = networkProbeSamples;
+    statusDoc["network_probe_timeout_ms"] = networkProbeTimeoutMs;
+    statusDoc["network_probe_ok"] = networkProbeOk;
+    statusDoc["network_probe_success_count"] = networkProbeSuccessCount;
+    statusDoc["network_probe_attempt_count"] = networkProbeAttemptCount;
+    statusDoc["last_network_probe_ms"] = lastNetworkProbeMs;
+    if (networkLatencyMs >= 0.0f) {
+        statusDoc["network_latency_ms"] = roundf(networkLatencyMs * 10.0f) / 10.0f;
+    } else {
+        statusDoc["network_latency_ms"] = nullptr;
+    }
+    if (networkJitterMs >= 0.0f) {
+        statusDoc["network_jitter_ms"] = roundf(networkJitterMs * 10.0f) / 10.0f;
+    } else {
+        statusDoc["network_jitter_ms"] = nullptr;
     }
     
     // Heartbeat info (using external variables)
@@ -552,6 +606,25 @@ void onMQTTMessage(char* topic, byte* payload, unsigned int length) {
         extern void updateDNSConfig(unsigned long, unsigned long, unsigned long, unsigned long);
         updateDNSConfig(failure, interval, recovery, minRec);
         // Publish updated status after change
+        delay(50);
+        publishAllSensors();
+    }
+    // Handle network latency/jitter probe config (expects JSON)
+    else if (topicStr == String(MQTT_COMMAND_TOPIC) + "/network_config") {
+        // Optional keys: probe_target, interval_ms, samples, timeout_ms
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, message);
+        if (err) {
+            Serial.printf("Invalid network config JSON: %s\n", err.c_str());
+            return;
+        }
+        const char* target = doc["probe_target"] | "";
+        unsigned long interval = doc["interval_ms"] | 0UL;
+        uint8_t samples = (uint8_t)(doc["samples"] | 0);
+        unsigned long timeout = doc["timeout_ms"] | 0UL;
+        updateNetworkMetricsConfig(target, interval, samples, timeout);
+        // Run an immediate probe with the new settings so HA sees fresh values
+        probeNetworkQuality();
         delay(50);
         publishAllSensors();
     }
