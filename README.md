@@ -80,6 +80,12 @@ Edit `src/config.cpp` with your actual values:
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
 
+// Heartbeat / notification-api (see docs/HEARTBEAT.md)
+// Default resolves to {base}/heartbeat/{deviceId}
+const char* heartbeatBaseUrl = "http://notifications.example.com"; // no trailing slash
+const char* heartbeatDeviceId = "poop";           // notification-api path segment
+const char* heartbeatPath = "";                   // or "/health" for a generic probe
+
 // OTA Configuration  
 const char* otaPassword = "YOUR_OTA_PASSWORD";
 
@@ -93,6 +99,8 @@ const int mqttPort = 1883;                     // MQTT port
 const char* mqttUser = "";                     // MQTT username (empty if no auth)
 const char* mqttPassword = "";                 // MQTT password (empty if no auth)
 ```
+
+**Heartbeat URL** is no longer a single hard-coded path: set `heartbeatBaseUrl` + `heartbeatDeviceId`, or set `heartbeatPath` (e.g. `"/health"`) for a generic health endpoint. Full contract: [`docs/HEARTBEAT.md`](docs/HEARTBEAT.md).
 
 ### File Structure
 

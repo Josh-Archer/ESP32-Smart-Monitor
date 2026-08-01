@@ -2,6 +2,11 @@
 
 # Recent Changes Summary
 
+## Unreleased
+
+- **Configurable heartbeat endpoint** - Replaced hard-coded `apiEndpoint` (`/heartbeat/poop`) with `heartbeatBaseUrl`, `heartbeatDeviceId`, and optional `heartbeatPath` override (`getHeartbeatEndpoint()`).
+- **notification-api contract docs** - Added `docs/HEARTBEAT.md` describing the HTTP GET contract, silence-timeout behavior, and a generic `/health` example.
+
 ## 2.6.2 - OTA Rollback Protection + v2.6.1 Merged Features
 
 **Major Release: Automatic Firmware Rollback Protection + Build Optimization**
