@@ -5,7 +5,7 @@
 #include "telnet.h"
 #include "system_utils.h"
 #include "dns_manager.h"
-#include "wifi_manager.h"
+#include "ota_manager.h"
 
 #ifdef ENABLE_MQTT
 #include "mqtt_manager.h"
@@ -66,9 +66,8 @@ void handleStatus() {
   doc["wifi_rssi"] = WiFi.RSSI();
   doc["free_heap"] = ESP.getFreeHeap();
   doc["wifi_connected"] = WiFi.isConnected();
-  doc["wifi_ssid"] = getActiveSSID();
-  doc["wifi_network"] = getActiveNetworkRole();
-  doc["wifi_secondary_configured"] = isSecondaryWiFiConfigured();
+  doc["ota_signing"] = getOtaSigningStatus();
+  doc["ota_signed_http_port"] = 8267;
 
   // DNS
   doc["primary_dns"] = primaryDNS.toString();
@@ -79,12 +78,7 @@ void handleStatus() {
   // Heartbeat
   doc["last_heartbeat_success"] = lastSuccessfulHeartbeat;
   doc["last_heartbeat_code"] = lastHeartbeatResponseCode;
-  doc["heartbeat_endpoint"] = getHeartbeatEndpoint();
-  doc["heartbeat_base_url"] = heartbeatBaseUrl;
-  doc["heartbeat_device_id"] = heartbeatDeviceId;
-  doc["heartbeat_path"] = (heartbeatPath != nullptr && heartbeatPath[0] != '\0')
-                              ? heartbeatPath
-                              : "(derived /heartbeat/{device_id})";
+  doc["heartbeat_endpoint"] = apiEndpoint;
 
   unsigned long timeSinceLastSuccessMs = millis() - lastSuccessfulHeartbeat;
   doc["time_since_last_success_ms"] = timeSinceLastSuccessMs;

@@ -16,7 +16,7 @@
 - Auto-Discovery for Multiple Devices: Seamless management and monitoring of multiple ESP32 devices from a single dashboard.
 
 ## Security & Maintenance
-- Encrypted OTA Updates: Add support for signed/encrypted firmware updates.
+- ~~Encrypted OTA Updates: Add support for signed/encrypted firmware updates.~~ **Done** — see `docs/OTA_SIGNING.md` (#29).
 - Device Health Self-Test: Periodic self-diagnostics with reporting to Home Assistant.
 - Remote Log Download: Download device logs from the web UI for troubleshooting.
 
