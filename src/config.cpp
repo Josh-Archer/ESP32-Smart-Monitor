@@ -1,7 +1,7 @@
 #include "config.h"
 #include "credentials.h"
 
-const char* firmwareVersion = "3.0.0";
+const char* firmwareVersion = "4.0.0";
 
 // WiFi Configuration (from credentials.h)
 const char* ssid = WIFI_SSID;
