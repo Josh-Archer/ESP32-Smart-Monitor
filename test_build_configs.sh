@@ -76,6 +76,16 @@ for env in esp32-c3-devkitm-1-serial esp32-c3-devkitm-1-webserver-serial esp32-c
     fi
 done
 
+# Test 5: Network metrics integration and unit tests
+print_status $YELLOW "Testing network metrics integration and unit tests..."
+if python3 test_network_metrics.py > /tmp/build-net-metrics.log 2>&1; then
+    print_status $GREEN "✓ Network metrics tests successful"
+else
+    print_status $RED "✗ Network metrics tests failed"
+    cat /tmp/build-net-metrics.log
+    exit 1
+fi
+
 print_banner "All Build Tests Passed!"
 echo -e "${GREEN}All build configurations compile successfully.${NC}"
 echo ""

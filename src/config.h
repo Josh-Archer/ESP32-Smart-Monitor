@@ -23,6 +23,9 @@ extern const char* heartbeatDeviceId;  // path segment for notification-api
 extern const char* heartbeatPath;      // optional full path override (e.g. "/health")
 const char* getHeartbeatEndpoint();    // resolved URL used for the periodic GET
 
+// API Configuration
+extern const char* apiEndpoint;
+
 // Device / OTA
 extern const char* otaPassword;
 extern const char* deviceName;
