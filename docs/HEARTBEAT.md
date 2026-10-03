@@ -63,12 +63,14 @@ Other path examples: `"/ping"`, `"/api/v1/health"`, `"/readyz"`.
 | Method | `GET` |
 | URL | Value of `getHeartbeatEndpoint()` |
 | Body | None |
-| Timeout | 10 seconds (firmware) |
-| Interval | ~5 seconds between attempts (main loop delay) |
+| Timeout | 3 seconds non-blocking (firmware) |
+| Interval | 30 seconds (`HEARTBEAT_INTERVAL_MS = 30000`) |
 | Success | HTTP status **200** (response body is logged only; content is not parsed) |
-| Failure | Non-200 or transport error; response code stored for status/MQTT |
+| Failure | Non-200 or transport error; error logging is throttled to once every 5 minutes to prevent console and MQTT spam |
 
 The device does **not** send auth headers or a JSON body. Keep the endpoint simple and unauthenticated only if appropriate for your network threat model (prefer private network / reverse-proxy ACL).
+
+> **Alternative / Home Assistant Native Dead-Man:** If you use Home Assistant and MQTT, you do not need an external HTTP heartbeat server. The ESP32's native MQTT Last Will and Testament (LWT) combined with Home Assistant's 5-minute inactivity automation can monitor device silence directly. See [docs/HOME_ASSISTANT.md](HOME_ASSISTANT.md).
 
 ## notification-api behavior (server → operator)
 

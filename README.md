@@ -4,6 +4,15 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 
 ## What's New (v4.0.4)
 
+### 4.0.x - Non-Blocking Architecture, USB CDC & Home Assistant MQTT Integration
+
+- **⚡ Sub-Millisecond Loop Latency** - Completely eliminated blocking delays (`delay(5000)`, etc.) from the main loop and replaced them with non-blocking `millis()` timers. Subsystems (Web server, Telnet, OTA, MQTT) are never starved.
+- **🛡️ Boot Wi-Fi Resilience (Fixes Issue #45)** - Boot Wi-Fi connection delay no longer causes false OTA firmware rollbacks. Subsystems initialize and the boot is marked valid immediately.
+- **🏠 Comprehensive Home Assistant Integration** - Automatic MQTT discovery for **18 entities** (signal strength, quality, uptime, latency, jitter, reboot button, alert switches, telnet logs). Full documentation and 5-minute offline alerting automations in [docs/HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md).
+- **💀 Native MQTT Dead-Man Watcher** - MQTT Last Will and Testament (LWT) on `homeassistant/sensor/poop_monitor/availability`. Mosquitto and Home Assistant automatically detect power loss or connection drops without relying on external cloud watchers.
+- **🔌 ESP32-C3 USB CDC Support** - Added `-DARDUINO_USB_CDC_ON_BOOT=1` and `-DARDUINO_USB_MODE=1` to PlatformIO for seamless USB serial console streaming and firmware flashing.
+- **🤫 Heartbeat Throttling & Failure De-duplication** - Heartbeat interval throttled to 30s with failure log suppression (only logging once every 5 minutes) to keep the MQTT telnet sensor quiet.
+
 ### 2.10.0 - Secondary WiFi / multi-SSID self-healing
 
 - **📡 Multi-SSID WiFi** - Configure primary + optional secondary SSID/password in credentials
