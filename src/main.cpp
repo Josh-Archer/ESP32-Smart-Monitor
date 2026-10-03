@@ -197,12 +197,13 @@ void loop() {
     testDNSResolution();
   }
 
-  // Non-blocking periodic heartbeat (every 5 seconds)
+  // Non-blocking periodic heartbeat (only runs if apiEndpoint is configured)
   static unsigned long lastHeartbeatTime = 0;
-  static unsigned long lastDnsFailureCheckTime = 0;
-  const unsigned long HEARTBEAT_INTERVAL_MS = 5000;
+  static unsigned long lastHeartbeatFailureLogTime = 0;
+  static bool lastHeartbeatWasFailure = false;
+  const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
 
-  if (now - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+  if (apiEndpoint && strlen(apiEndpoint) > 0 && (now - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS)) {
     lastHeartbeatTime = now;
 
     WiFiClient client;
@@ -215,22 +216,22 @@ void loop() {
 
     if (httpCode > 0) {
       String payload = http.getString();
-      telnetPrintf("[%10lu ms] [Heartbeat] Ping Response (%d): %s\r\n", millis(), httpCode, payload.c_str());
+      if (lastHeartbeatWasFailure || httpCode != 200) {
+        telnetPrintf("[%10lu ms] [Heartbeat] Ping Response (%d): %s\r\n", millis(), httpCode, payload.c_str());
+      }
       
       // Track successful heartbeat (200 OK)
       if (httpCode == 200) {
         lastSuccessfulHeartbeat = millis();
+        lastHeartbeatWasFailure = false;
       }
     } else {
-      telnetPrintf("[%10lu ms] [Heartbeat] Ping failed: %s\r\n", millis(), http.errorToString(httpCode).c_str());
-      
-      // If heartbeat fails, test DNS resolution (debounced to avoid spamming/blocking)
-      if ((httpCode == HTTPC_ERROR_CONNECTION_REFUSED || httpCode == -1) &&
-          (now - lastDnsFailureCheckTime >= 30000)) {
-        lastDnsFailureCheckTime = now;
-        telnetPrintf("[%10lu ms] [DEBUG] Heartbeat failed, testing DNS...\r\n", millis());
-        testDNSResolution();
+      // Throttle failure logs: only log on first failure or once every 5 minutes to keep MQTT/telnet quiet
+      if (!lastHeartbeatWasFailure || (now - lastHeartbeatFailureLogTime >= 300000)) {
+        lastHeartbeatFailureLogTime = now;
+        telnetPrintf("[%10lu ms] [Heartbeat] Ping failed: %s (throttled)\r\n", millis(), http.errorToString(httpCode).c_str());
       }
+      lastHeartbeatWasFailure = true;
     }
 
     http.end();
