@@ -126,8 +126,7 @@ void setup() {
     // Test DNS resolution after custom DNS applied by wifi manager
     testDNSResolution();
   } else {
-    Serial.printf("\r\n[%10lu ms] [ERROR] WiFi connection failed!\r\n", millis());
-    return;
+    Serial.printf("\r\n[%10lu ms] [WARNING] WiFi connection failed during boot. Background reconnection will continue in loop.\r\n", millis());
   }
 
   // Initialize modules
@@ -148,7 +147,7 @@ void setup() {
   }
   
   // Mark firmware as valid after successful module initialization
-  // This will reset the boot failure counter and prevent rollback
+  // This will reset the boot failure counter and prevent false rollback (#45)
   markFirmwareValid();
   
   Serial.printf("[%10lu ms] [BOOT] Setup completed successfully\r\n", millis());
@@ -179,49 +178,61 @@ void loop() {
 #endif
     rebootDevice(3000, "Remote reboot request");
   }
-  
-  unsigned long now = millis();
 
   // Multi-SSID self-healing: reconnect, failover, recover to primary
   handleWiFi();
   if (!isWiFiConnected()) {
-    delay(2000);
     return;
   }
 
-  // Test DNS every 20 heartbeats (100 seconds) - reduced frequency
-  static int heartbeatCount = 0;
-  if (heartbeatCount % 20 == 0) {
+  unsigned long now = millis();
+
+  // Periodic DNS test (every 100 seconds)
+  static unsigned long lastDnsCheckTime = 0;
+  const unsigned long DNS_CHECK_INTERVAL_MS = 100000;
+  if (lastDnsCheckTime == 0) {
+    lastDnsCheckTime = now;
+  } else if (now - lastDnsCheckTime >= DNS_CHECK_INTERVAL_MS) {
+    lastDnsCheckTime = now;
     testDNSResolution();
   }
-  heartbeatCount++;
 
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, apiEndpoint);
-  http.setTimeout(10000);
-  
-  int httpCode = http.GET();
-  lastHeartbeatResponseCode = httpCode;
+  // Non-blocking periodic heartbeat (every 5 seconds)
+  static unsigned long lastHeartbeatTime = 0;
+  static unsigned long lastDnsFailureCheckTime = 0;
+  const unsigned long HEARTBEAT_INTERVAL_MS = 5000;
 
-  if (httpCode > 0) {
-    String payload = http.getString();
-    telnetPrintf("[%10lu ms] [Heartbeat] Ping Response (%d): %s\r\n", millis(), httpCode, payload.c_str());
+  if (now - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+    lastHeartbeatTime = now;
+
+    WiFiClient client;
+    HTTPClient http;
+    http.begin(client, apiEndpoint);
+    http.setTimeout(3000);
     
-    // Track successful heartbeat (200 OK)
-    if (httpCode == 200) {
-      lastSuccessfulHeartbeat = millis();
+    int httpCode = http.GET();
+    lastHeartbeatResponseCode = httpCode;
+
+    if (httpCode > 0) {
+      String payload = http.getString();
+      telnetPrintf("[%10lu ms] [Heartbeat] Ping Response (%d): %s\r\n", millis(), httpCode, payload.c_str());
+      
+      // Track successful heartbeat (200 OK)
+      if (httpCode == 200) {
+        lastSuccessfulHeartbeat = millis();
+      }
+    } else {
+      telnetPrintf("[%10lu ms] [Heartbeat] Ping failed: %s\r\n", millis(), http.errorToString(httpCode).c_str());
+      
+      // If heartbeat fails, test DNS resolution (debounced to avoid spamming/blocking)
+      if ((httpCode == HTTPC_ERROR_CONNECTION_REFUSED || httpCode == -1) &&
+          (now - lastDnsFailureCheckTime >= 30000)) {
+        lastDnsFailureCheckTime = now;
+        telnetPrintf("[%10lu ms] [DEBUG] Heartbeat failed, testing DNS...\r\n", millis());
+        testDNSResolution();
+      }
     }
-  } else {
-    telnetPrintf("[%10lu ms] [Heartbeat] Ping failed: %s\r\n", millis(), http.errorToString(httpCode).c_str());
-    
-    // If heartbeat fails, test DNS resolution
-    if (httpCode == HTTPC_ERROR_CONNECTION_REFUSED || httpCode == -1) {
-      telnetPrintf("[%10lu ms] [DEBUG] Heartbeat failed, testing DNS...\r\n", millis());
-      testDNSResolution();
-    }
+
+    http.end();
   }
-
-  http.end();
-  delay(5000);
 }
