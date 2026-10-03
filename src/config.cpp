@@ -15,8 +15,8 @@ const char* otaPassword = OTA_PASSWORD;
 const char* deviceName = "poop-monitor";
 
 // DNS Configuration
-IPAddress primaryDNS(192, 168, 68, 51);    // Your custom DNS server
-IPAddress fallbackDNS(192, 168, 68, 51);         
+IPAddress primaryDNS(192, 168, 68, 94);    // Active network DNS server
+IPAddress fallbackDNS(1, 1, 1, 1);         // Public fallback DNS (Cloudflare)
 
 // Pushover Configuration (from credentials.h)
 const char* pushoverToken = PUSHOVER_TOKEN;
@@ -24,7 +24,7 @@ const char* pushoverUser = PUSHOVER_USER;
 const char* pushoverApiUrl = "https://api.pushover.net/1/messages.json";
 
 // MQTT Configuration
-const char* mqttServer = "homeassistant.local";      // Your MQTT broker IP
+const char* mqttServer = "192.168.1.150";           // Home Assistant IP (was homeassistant.local)
 const int mqttPort = 1883;                     // MQTT port (1883 or 8883 for SSL)
 const char* mqttUser = MQTT_USER;                     // MQTT username (empty if no auth)
 const char* mqttPassword = MQTT_PASSWORD;                 // MQTT password (empty if no auth)
