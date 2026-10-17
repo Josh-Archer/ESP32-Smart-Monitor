@@ -86,6 +86,16 @@ else
     exit 1
 fi
 
+# Test 6: OTA notification integration and unit tests
+print_status $YELLOW "Testing OTA notification integration and unit tests..."
+if python3 test_ota_notifications.py > /tmp/build-ota-notif.log 2>&1; then
+    print_status $GREEN "✓ OTA notification tests successful"
+else
+    print_status $RED "✗ OTA notification tests failed"
+    cat /tmp/build-ota-notif.log
+    exit 1
+fi
+
 print_banner "All Build Tests Passed!"
 echo -e "${GREEN}All build configurations compile successfully.${NC}"
 echo ""

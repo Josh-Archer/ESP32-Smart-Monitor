@@ -1,6 +1,17 @@
 #include "config.h"
 #include "credentials.h"
 
+// Weak fallback definitions for credentials when credentials.cpp is not present
+__attribute__((weak)) const char* WIFI_SSID = "";
+__attribute__((weak)) const char* WIFI_PASSWORD = "";
+__attribute__((weak)) const char* WIFI_SSID_SECONDARY = "";
+__attribute__((weak)) const char* WIFI_PASSWORD_SECONDARY = "";
+__attribute__((weak)) const char* OTA_PASSWORD = "";
+__attribute__((weak)) const char* PUSHOVER_TOKEN = "";
+__attribute__((weak)) const char* PUSHOVER_USER = "";
+__attribute__((weak)) const char* MQTT_USER = "";
+__attribute__((weak)) const char* MQTT_PASSWORD = "";
+
 const char* firmwareVersion = "4.0.4";
 
 // WiFi Configuration (from credentials.h)

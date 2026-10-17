@@ -27,4 +27,9 @@ void resetBootFailureCount();
 // Signing / encryption status string for diagnostics
 const char* getOtaSigningStatus();
 
+// Notification helpers for OTA upload lifecycle
+void notifyOtaStart(const char* uploadType = "sketch");
+void notifyOtaSuccess(const char* details = "OTA update completed successfully");
+void notifyOtaFailure(const char* reason = "Unknown error");
+
 #endif
