@@ -3,6 +3,7 @@
 #include "WiFiClientSecure.h"
 #include "HTTPClient.h"
 #include "notifications.h"
+#include "ota_policy.h"
 
 #include <iostream>
 #include <string>
@@ -22,118 +23,6 @@ const char* otaPassword = "secret-password";
 #include "notifications.cpp"
 
 // Helpers for test recording
-struct MockAlertRecord {
-  std::string title;
-  std::string message;
-  int priority;
-  unsigned long timestamp;
-};
-
-static std::vector<MockAlertRecord> g_dispatchedAlerts;
-
-void recordMockAlert(const char* title, const char* message, int priority) {
-  g_dispatchedAlerts.push_back({
-    title ? title : "",
-    message ? message : "",
-    priority,
-    millis()
-  });
-}
-
-// Behavioral helper mimicking ota_manager auth validation
-bool isOtaPasswordAuthenticated(const char* configuredPassword, const String& headerPassword) {
-  if (!configuredPassword || strlen(configuredPassword) == 0 ||
-      headerPassword.length() == 0 || headerPassword != String(configuredPassword)) {
-    return false;
-  }
-  return true;
-}
-
-// Behavioral helper mimicking ota_manager bad-password rate limiting and priority
-bool handleOtaAuthFailureEvent(unsigned long currentMs, unsigned long& lastAuthAlertMs,
-                               void (*alertFn)(const char*, const char*, int)) {
-  const unsigned long AUTH_ALERT_INTERVAL_MS = 60000;
-  if (lastAuthAlertMs != 0 && (currentMs - lastAuthAlertMs) < AUTH_ALERT_INTERVAL_MS) {
-    return false; // suppressed / rate-limited
-  }
-  lastAuthAlertMs = currentMs;
-  if (alertFn) {
-    alertFn("OTA Upload Failed - smart-monitor-test",
-            "OTA upload failed: Authentication Failed (Error 0). Previous firmware remains active.",
-            0); // priority 0
-  }
-  return true;
-}
-
-// Behavioral helper mimicking ArduinoOTA start notification deferral
-struct ArduinoOtaLifecycleSimulator {
-  bool startPending = false;
-  std::string startType;
-  std::vector<std::string> eventLog;
-
-  void onStart(const char* type) {
-    startPending = true;
-    startType = type ? type : "sketch";
-    eventLog.push_back("onStart:queued");
-    // Does NOT call alertFn here (no blocking before espota connects back)
-  }
-
-  void onEnd(void (*alertFn)(const char*, const char*, int)) {
-    eventLog.push_back("onEnd:begin");
-    if (startPending) {
-      startPending = false;
-      if (alertFn) {
-        alertFn("OTA Upload Started", startType.c_str(), 0);
-      }
-      eventLog.push_back("onEnd:start_dispatched");
-    }
-    if (alertFn) {
-      alertFn("OTA Upload Successful", "Accepted", 0);
-    }
-    eventLog.push_back("onEnd:success_dispatched");
-  }
-};
-
-// Behavioral helper mimicking Signed HTTP OTA response precedence
-struct HttpOtaResponseOrderTracker {
-  std::vector<std::string> sequence;
-
-  void sendResponse(int code) {
-    sequence.push_back("HTTP_RESPONSE_" + std::to_string(code));
-  }
-
-  void clientStop() {
-    sequence.push_back("CLIENT_STOP");
-  }
-
-  void dispatchStart() {
-    sequence.push_back("NOTIFY_START");
-  }
-
-  void dispatchFailure(const char* reason) {
-    sequence.push_back(std::string("NOTIFY_FAILURE:") + (reason ? reason : ""));
-  }
-
-  void dispatchSuccess() {
-    sequence.push_back("NOTIFY_SUCCESS");
-  }
-
-  void executeFailureBranch(int code, const char* reason) {
-    // Current firmware order: sendResponse -> client.stop -> notifyOtaStart -> notifyOtaFailure
-    sendResponse(code);
-    clientStop();
-    dispatchStart();
-    dispatchFailure(reason);
-  }
-
-  void executeSuccessBranch() {
-    sendResponse(200);
-    clientStop();
-    dispatchStart();
-    dispatchSuccess();
-  }
-};
-
 // Individual test cases
 void test_empty_token_returns_early() {
   pushoverToken = "";
@@ -200,6 +89,7 @@ void test_explicit_network_timeouts() {
   assert(MockHTTPClient::lastConnectTimeout == 3000);
   assert(MockHTTPClient::lastTimeout == 3000);
   assert(MockWiFiClientSecure::instancesCreated > 0);
+  assert(MockWiFi::lastDnsTimeout == 3000);
 }
 
 void test_url_encode_function() {
@@ -231,78 +121,37 @@ void test_pushover_post_body_url_encoding() {
 }
 
 void test_empty_ota_password_rejected() {
-  // Empty configured password must reject empty header
-  assert(!isOtaPasswordAuthenticated("", ""));
-  assert(!isOtaPasswordAuthenticated("", "somepass"));
-  assert(!isOtaPasswordAuthenticated(nullptr, ""));
-  assert(!isOtaPasswordAuthenticated(nullptr, "somepass"));
-
-  // Configured password must reject empty or wrong header
-  assert(!isOtaPasswordAuthenticated("mypassword", ""));
-  assert(!isOtaPasswordAuthenticated("mypassword", "wrongpassword"));
-
-  // Matching non-empty password accepted
-  assert(isOtaPasswordAuthenticated("mypassword", "mypassword"));
+  assert(!otaPasswordConfigured(""));
+  assert(!otaPasswordConfigured(nullptr));
+  assert(!otaPasswordMatches("", ""));
+  assert(!otaPasswordMatches("", "somepass"));
+  assert(!otaPasswordMatches(nullptr, "somepass"));
+  assert(!otaPasswordMatches("mypassword", ""));
+  assert(!otaPasswordMatches("mypassword", "wrongpassword"));
+  assert(otaPasswordMatches("mypassword", "mypassword"));
 }
 
 void test_auth_failure_rate_limiting_and_priority() {
-  g_dispatchedAlerts.clear();
+  assert(OTA_AUTH_ALERT_PRIORITY == 0);
   unsigned long lastAuthMs = 0;
 
   // First auth failure at t = 1000
-  bool dispatched1 = handleOtaAuthFailureEvent(1000, lastAuthMs, recordMockAlert);
+  bool dispatched1 = otaAuthAlertDue(1000, lastAuthMs);
   assert(dispatched1 == true);
-  assert(g_dispatchedAlerts.size() == 1);
-  assert(g_dispatchedAlerts[0].priority == 0); // Must be priority 0, not priority 1
 
   // Second auth failure at t = 5000 (within 60s) -> must be rate-limited
-  bool dispatched2 = handleOtaAuthFailureEvent(5000, lastAuthMs, recordMockAlert);
+  bool dispatched2 = otaAuthAlertDue(5000, lastAuthMs);
   assert(dispatched2 == false);
-  assert(g_dispatchedAlerts.size() == 1); // No new alert added
 
-  // Third auth failure at t = 62000 (after 60s) -> dispatched
-  bool dispatched3 = handleOtaAuthFailureEvent(62000, lastAuthMs, recordMockAlert);
+  // Third auth failure at t = 61000 (after 60s) -> dispatched
+  bool dispatched3 = otaAuthAlertDue(61000, lastAuthMs);
   assert(dispatched3 == true);
-  assert(g_dispatchedAlerts.size() == 2);
-  assert(g_dispatchedAlerts[1].priority == 0);
 }
 
-void test_arduino_ota_start_notice_deferred() {
-  g_dispatchedAlerts.clear();
-  ArduinoOtaLifecycleSimulator sim;
-
-  // onStart called
-  sim.onStart("sketch");
-  assert(sim.startPending == true);
-  assert(g_dispatchedAlerts.empty()); // Must NOT have sent alert in onStart
-
-  // onEnd called
-  sim.onEnd(recordMockAlert);
-  assert(sim.startPending == false);
-  assert(g_dispatchedAlerts.size() == 2);
-  assert(g_dispatchedAlerts[0].title == "OTA Upload Started");
-  assert(g_dispatchedAlerts[1].title == "OTA Upload Successful");
-}
-
-void test_http_ota_response_before_notification() {
-  HttpOtaResponseOrderTracker tracker;
-
-  // Test failure branch (e.g. 500 Update.begin failed)
-  tracker.executeFailureBranch(500, "Update.begin failed");
-  assert(tracker.sequence.size() == 4);
-  assert(tracker.sequence[0] == "HTTP_RESPONSE_500");
-  assert(tracker.sequence[1] == "CLIENT_STOP");
-  assert(tracker.sequence[2] == "NOTIFY_START");
-  assert(tracker.sequence[3] == "NOTIFY_FAILURE:Update.begin failed");
-
-  // Test success branch (200 OK)
-  tracker.sequence.clear();
-  tracker.executeSuccessBranch();
-  assert(tracker.sequence.size() == 4);
-  assert(tracker.sequence[0] == "HTTP_RESPONSE_200");
-  assert(tracker.sequence[1] == "CLIENT_STOP");
-  assert(tracker.sequence[2] == "NOTIFY_START");
-  assert(tracker.sequence[3] == "NOTIFY_SUCCESS");
+void test_filesystem_ota_requires_signing_refusal() {
+  assert(!otaFilesystemNeedsSignatureRejection(false, false));
+  assert(otaFilesystemNeedsSignatureRejection(false, true));
+  assert(!otaFilesystemNeedsSignatureRejection(true, true));
 }
 
 int main(int argc, char** argv) {
@@ -344,13 +193,9 @@ int main(int argc, char** argv) {
     test_auth_failure_rate_limiting_and_priority();
     std::cout << "PASS: test_auth_failure_rate_limiting_and_priority" << std::endl;
   }
-  if (target == "all" || target == "test_arduino_ota_start_notice_deferred") {
-    test_arduino_ota_start_notice_deferred();
-    std::cout << "PASS: test_arduino_ota_start_notice_deferred" << std::endl;
-  }
-  if (target == "all" || target == "test_http_ota_response_before_notification") {
-    test_http_ota_response_before_notification();
-    std::cout << "PASS: test_http_ota_response_before_notification" << std::endl;
+  if (target == "all" || target == "test_filesystem_ota_requires_signing_refusal") {
+    test_filesystem_ota_requires_signing_refusal();
+    std::cout << "PASS: test_filesystem_ota_requires_signing_refusal" << std::endl;
   }
 
   std::cout << "\nAll host behavioural tests PASSED!" << std::endl;

@@ -3,6 +3,82 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <string>
+
+#if defined(ARDUINO)
+#include <lwip/dns.h>
+#include <lwip/ip_addr.h>
+
+static volatile bool s_dnsDone = false;
+static volatile bool s_dnsActive = false;
+static volatile unsigned long s_dnsGeneration = 0;
+static ip_addr_t s_dnsResolvedAddr;
+
+static void s_dnsFoundCallback(const char*, const ip_addr_t* ipaddr, void* callbackArg) {
+  unsigned long generation = (unsigned long)(uintptr_t)callbackArg;
+  if (!s_dnsActive || generation != s_dnsGeneration) {
+    return;
+  }
+  if (ipaddr) {
+    s_dnsResolvedAddr = *ipaddr;
+  }
+  s_dnsDone = true;
+}
+
+static bool resolveHostWithTimeout(const char* host, IPAddress& outIp, unsigned long timeoutMs = 3000) {
+  if (!host || !*host) {
+    return false;
+  }
+
+  ip_addr_t addr;
+  unsigned long generation = ++s_dnsGeneration;
+  s_dnsActive = true;
+  s_dnsDone = false;
+  err_t err = dns_gethostbyname(host, &addr, s_dnsFoundCallback,
+                                (void*)(uintptr_t)generation);
+  if (err == ERR_OK) {
+    s_dnsActive = false;
+    if (!IP_IS_V4(&addr)) {
+      return false;
+    }
+    outIp = addr.u_addr.ip4.addr;
+    return true;
+  }
+  if (err != ERR_INPROGRESS) {
+    s_dnsActive = false;
+    return false;
+  }
+
+  unsigned long start = millis();
+  while (!s_dnsDone && (millis() - start) < timeoutMs) {
+    delay(10);
+  }
+  s_dnsActive = false;
+  if (!s_dnsDone || !IP_IS_V4(&s_dnsResolvedAddr)) {
+    return false;
+  }
+  outIp = s_dnsResolvedAddr.u_addr.ip4.addr;
+  return true;
+}
+#else
+static bool resolveHostWithTimeout(const char* host, IPAddress& outIp, unsigned long timeoutMs = 3000) {
+  return host && *host && WiFi.hostByName(host, outIp, timeoutMs) == 1;
+}
+#endif
+
+String extractHostFromUrl(const char* url) {
+  if (!url) {
+    return "";
+  }
+  const char* p = strstr(url, "://");
+  const char* start = p ? (p + 3) : url;
+  const char* slash = strchr(start, '/');
+  if (!slash) {
+    return String(start);
+  }
+  std::string host(start, slash - start);
+  return String(host.c_str());
+}
 
 String urlEncode(const char* str) {
   if (!str) {
@@ -14,7 +90,7 @@ String urlEncode(const char* str) {
   while (*p) {
     char c = *p++;
     if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-        c == '-' || c == '_' || c == '.' || c == '~') {
+        c == '-' || c == '.' || c == '_' || c == '~') {
       encoded += c;
     } else if (c == ' ') {
       encoded += '+';
@@ -38,6 +114,13 @@ void sendPushoverAlert(const char* title, const char* message, int priority) {
     return;
   }
 
+  String host = extractHostFromUrl(pushoverApiUrl);
+  IPAddress resolvedIp;
+  if (!resolveHostWithTimeout(host.c_str(), resolvedIp, 3000)) {
+    Serial.printf("[%10lu ms] [PUSHOVER] DNS resolution timed out or failed for %s\r\n", millis(), host.c_str());
+    return;
+  }
+
   WiFiClientSecure client;
   client.setInsecure(); // For simplicity - in production, use proper certificates
   client.setHandshakeTimeout(3);
@@ -48,8 +131,6 @@ void sendPushoverAlert(const char* title, const char* message, int priority) {
   http.setTimeout(3000);
 
   if (http.begin(client, pushoverApiUrl)) {
-    http.setConnectTimeout(3000);
-    http.setTimeout(3000);
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
     String postData = "token=" + urlEncode(pushoverToken) +
