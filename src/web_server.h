@@ -20,6 +20,8 @@ void handleStatus();
 void handleAlertPause();
 void handleAlertResume();
 void handleNotFound();
+void handleSetup();
+void handleSetupInfo();
 
 // Telnet streaming handlers
 void handleTelnetStart();
