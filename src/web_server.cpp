@@ -7,6 +7,8 @@
 #include "dns_manager.h"
 #include "ota_manager.h"
 #include "wifi_manager.h"
+#include "setup_qr.h"
+#include "generated/setup_page.h"
 
 #ifdef ENABLE_MQTT
 #include "mqtt_manager.h"
@@ -41,7 +43,7 @@ static void handleOptions() {
 void handleRoot() {
   // Minimal HTML landing page (UI is hosted externally)
   // Minified HTML for landing page
-  const char html[] PROGMEM = "<html><head><title>ESP32</title></head><body><h1>ESP32</h1><p><a href='/status'>Status JSON</a> | <a href='/reboot'>Reboot</a></p><script>fetch('/status').then(r=>r.json()).then(d=>document.body.innerHTML+='<p>Version: '+d.version+'</p>');</script></body></html>";
+  const char html[] PROGMEM = "<html><head><title>ESP32</title></head><body><h1>ESP32</h1><p><a href='/status'>Status JSON</a> | <a href='/setup'>QR setup</a> | <a href='/reboot'>Reboot</a></p><script>fetch('/status').then(r=>r.json()).then(d=>document.body.innerHTML+='<p>Version: '+d.version+'</p>');</script></body></html>";
   server.send(200, "text/html", FPSTR(html));
 }
 
@@ -233,6 +235,87 @@ void addToTelnetLogBuffer(const String& logEntry) {
   }
 }
 
+void handleSetup() {
+  // Self-contained page generated from web/setup.html. Wi-Fi passwords are
+  // typed in the browser and are not part of this response.
+  addCORS();
+  server.sendHeader("Content-Encoding", "gzip");
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send_P(200, "text/html", reinterpret_cast<PGM_P>(SETUP_PAGE_GZ), SETUP_PAGE_GZ_LEN);
+}
+
+void handleSetupInfo() {
+  // Public onboarding fields only. Wi-Fi and MQTT passwords are not read here.
+  JsonDocument doc;
+  doc["v"] = 1;
+  doc["device"] = deviceName;
+  doc["version"] = firmwareVersion;
+
+  String ip = WiFi.localIP().toString();
+  bool haveIp = WiFi.isConnected() && ip.length() > 0 && ip != "0.0.0.0";
+  doc["ip"] = haveIp ? ip : "";
+  String mdns = String(deviceName) + ".local";
+  doc["mdns"] = mdns;
+  String mdnsUrl = String("http://") + mdns + "/";
+  String dashboard = haveIp ? String("http://") + ip + "/" : mdnsUrl;
+  doc["dashboard_url"] = dashboard;
+  doc["mdns_url"] = mdnsUrl;
+
+  const char* activeSsid = getActiveSSID();
+  doc["wifi"]["ssid"] = activeSsid ? activeSsid : "";
+  doc["wifi"]["security"] = "WPA";
+
+#ifdef ENABLE_MQTT
+  doc["home_assistant"]["mqtt_enabled"] = true;
+  doc["home_assistant"]["mqtt_host"] = mqttServer ? mqttServer : "";
+  doc["home_assistant"]["mqtt_port"] = mqttPort;
+  doc["home_assistant"]["discovery_prefix"] = MQTT_DISCOVERY_PREFIX;
+  doc["home_assistant"]["device_id"] = HA_DEVICE_ID;
+  doc["home_assistant"]["device_name"] = HA_DEVICE_NAME;
+  doc["home_assistant"]["status_topic"] = MQTT_STATUS_TOPIC;
+  doc["home_assistant"]["availability_topic"] = MQTT_AVAILABILITY_TOPIC;
+  const char* haName = HA_DEVICE_NAME;
+  const char* haId = HA_DEVICE_ID;
+  const char* discovery = MQTT_DISCOVERY_PREFIX;
+  const char* mqttHost = mqttServer;
+  int port = mqttPort;
+#else
+  doc["home_assistant"]["mqtt_enabled"] = false;
+  doc["home_assistant"]["mqtt_host"] = "";
+  doc["home_assistant"]["mqtt_port"] = 0;
+  doc["home_assistant"]["discovery_prefix"] = "";
+  doc["home_assistant"]["device_id"] = "";
+  doc["home_assistant"]["device_name"] = "";
+  doc["home_assistant"]["status_topic"] = "";
+  doc["home_assistant"]["availability_topic"] = "";
+  const char* haName = deviceName;
+  const char* haId = "";
+  const char* discovery = "";
+  const char* mqttHost = "";
+  int port = 0;
+#endif
+
+  char dashboardQr[256];
+  if (setup_qr_build_dashboard(dashboard.c_str(), dashboardQr, sizeof(dashboardQr)) == SETUP_QR_OK) {
+    doc["qr"]["dashboard"] = dashboardQr;
+  } else {
+    doc["qr"]["dashboard"] = "";
+  }
+
+  char haQr[768];
+  if (setup_qr_build_ha(haName, dashboard.c_str(), mqttHost, port, discovery, haId,
+                        haQr, sizeof(haQr)) == SETUP_QR_OK) {
+    doc["qr"]["home_assistant"] = haQr;
+  } else {
+    doc["qr"]["home_assistant"] = "";
+  }
+
+  String out;
+  serializeJson(doc, out);
+  addCORS();
+  server.send(200, "application/json", out);
+}
+
 void handleNotFound() {
   String message = "File Not Found\n\n";
   message += "URI: " + server.uri() + "\n";
@@ -252,6 +335,8 @@ void initWebServer() {
   
   // Main routes
   server.on("/", handleRoot);
+  server.on("/setup", handleSetup);
+  server.on("/setup/info", handleSetupInfo);
   server.on("/reboot", handleReboot);
   server.on("/status", handleStatus);
   server.on("/status", HTTP_HEAD, [](){ addCORS(); server.send(200); });
@@ -279,6 +364,8 @@ void initWebServer() {
   server.on("/telnet/stop", HTTP_OPTIONS, handleOptions);
   server.on("/telnet/output", HTTP_OPTIONS, handleOptions);
   server.on("/reboot", HTTP_OPTIONS, handleOptions);
+  server.on("/setup", HTTP_OPTIONS, handleOptions);
+  server.on("/setup/info", HTTP_OPTIONS, handleOptions);
   
   server.onNotFound(handleNotFound);
   

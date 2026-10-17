@@ -8,7 +8,7 @@
 ## Web & User Experience
 - Real-Time Web Dashboard: Live graphs for signal, memory, DNS, and MQTT status with historical trends.
 - Mobile-First PWA: Enhance the web UI for mobile, including push notifications and offline diagnostics.
-- QR Code Device Setup: Generate a QR code for easy onboarding to WiFi/Home Assistant.
+- ~~QR Code Device Setup: Generate a QR code for easy onboarding to WiFi/Home Assistant.~~ **Done (#42)** — `web/setup.html` and device `GET /setup`. The Wi-Fi password stays in the browser.
 
 ## Automation & Integrations
 - Home Assistant Device Triggers: Expose device triggers for automations (e.g., “DNS down for 10 min”).

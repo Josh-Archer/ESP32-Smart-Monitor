@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR setup</title>
+  <meta name="theme-color" content="#0d6efd">
+  <meta name="description" content="QR codes for Wi-Fi join, the device dashboard, and Home Assistant onboarding.">
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+      background: #f4f6f8;
+      color: #1f2933;
+      line-height: 1.45;
+    }
+    header, main { max-width: 880px; margin: 0 auto; padding: 16px; }
+    header { padding-bottom: 0; }
+    h1 { margin: 0 0 4px; font-size: 1.6rem; }
+    h2 { margin: 0 0 12px; font-size: 1.15rem; }
+    a { color: #0d6efd; }
+    .sub, .hint, .note { color: #52606d; }
+    .status {
+      background: #e7f1ff;
+      border: 1px solid #b6d4fe;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin: 12px 0;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e4e7eb;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 0 0 16px;
+    }
+    label { display: block; font-weight: 600; margin: 10px 0 4px; }
+    input, select {
+      width: 100%;
+      font: inherit;
+      padding: 8px 10px;
+      border: 1px solid #cbd2d9;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; }
+    .row > * { flex: 1 1 180px; }
+    .check { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-top: 12px; }
+    .check input { width: auto; }
+    button, .linkish {
+      font: inherit;
+      border-radius: 8px;
+      padding: 8px 12px;
+      border: 1px solid #0d6efd;
+      background: #0d6efd;
+      color: #fff;
+      cursor: pointer;
+    }
+    button.secondary { background: #fff; color: #0d6efd; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .qr { margin-top: 12px; min-height: 24px; }
+    .qr svg { width: min(220px, 100%); height: auto; }
+    code, .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      word-break: break-all;
+    }
+    #selftest-result { font-weight: 700; }
+    @media (max-width: 640px) {
+      header, main { padding: 12px; }
+      h1 { font-size: 1.35rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p><a href="/">Control panel</a></p>
+    <h1>QR setup</h1>
+    <p class="sub" id="device-line">ESP32</p>
+    <p id="selftest-result" hidden></p>
+    <p class="status" id="setup-status">Preparing setup codes…</p>
+    <button type="button" class="secondary" id="reload-device">Reload from device</button>
+  </header>
+  <main id="setup-app">
+    <section class="card" aria-labelledby="wifi-heading">
+      <h2 id="wifi-heading">Join Wi-Fi</h2>
+      <p class="note">The phone camera reads this as a Wi-Fi join code. The password is typed on this page and is not sent to the device.</p>
+      <form id="wifi-form" autocomplete="off">
+        <label for="ssid">Network name</label>
+        <input id="ssid" name="ssid" autocomplete="off" spellcheck="false">
+        <div class="row">
+          <div>
+            <label for="security">Security</label>
+            <select id="security" name="security">
+              <option value="WPA" selected>WPA / WPA2 / WPA3</option>
+              <option value="WEP">WEP</option>
+              <option value="nopass">Open network</option>
+            </select>
+          </div>
+          <div>
+            <label for="wifi-password">Wi-Fi password</label>
+            <input id="wifi-password" name="wifi-password" type="password" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <label class="check" for="hidden"><input id="hidden" type="checkbox"> Hidden network</label>
+        <div class="actions">
+          <button type="submit">Generate Wi-Fi QR</button>
+          <button type="button" class="secondary" id="clear-password">Clear password</button>
+        </div>
+      </form>
+      <p class="hint" id="wifi-hint">Enter the network name and password to generate a join code.</p>
+      <div class="qr" id="wifi-qr"></div>
+    </section>
+
+    <section class="card" aria-labelledby="dash-heading">
+      <h2 id="dash-heading">Open this device</h2>
+      <p class="note">Scan to open the monitor in a browser. The mDNS name is shown when the IP is not filled in.</p>
+      <label for="dashboard-url">Dashboard URL</label>
+      <input id="dashboard-url" name="dashboard-url" inputmode="url" spellcheck="false" autocomplete="off">
+      <p class="hint" id="mdns-line"></p>
+      <p><a id="dashboard-link" href=""></a></p>
+      <div class="qr" id="dashboard-qr"></div>
+    </section>
+
+    <section class="card" aria-labelledby="ha-heading">
+      <h2 id="ha-heading">Home Assistant</h2>
+      <p class="note" id="mqtt-note">MQTT username and password are not included.</p>
+      <label for="ha-name">Device name</label>
+      <input id="ha-name" name="ha-name" autocomplete="off">
+      <div class="row">
+        <div>
+          <label for="mqtt-host">MQTT broker host</label>
+          <input id="mqtt-host" name="mqtt-host" spellcheck="false" autocomplete="off">
+        </div>
+        <div>
+          <label for="mqtt-port">MQTT port</label>
+          <input id="mqtt-port" name="mqtt-port" inputmode="numeric" autocomplete="off">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="discovery">Discovery prefix</label>
+          <input id="discovery" name="discovery" spellcheck="false" autocomplete="off">
+        </div>
+        <div>
+          <label for="device-id">Device id</label>
+          <input id="device-id" name="device-id" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+      <p>Status topic: <span class="mono" id="status-topic"></span></p>
+      <p>Availability topic: <span class="mono" id="availability-topic"></span></p>
+      <p class="mono" id="ha-payload"></p>
+      <div class="qr" id="ha-qr"></div>
+    </section>
+  </main>
+  <script src="/vendor/qrcode.js"></script>
+  <script src="/setup.js"></script>
+</body>
+</html>

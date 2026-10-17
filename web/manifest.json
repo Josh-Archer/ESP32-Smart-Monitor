@@ -35,6 +35,12 @@
       "short_name": "Reboot",
       "description": "Reboot the ESP32 device",
       "url": "/reboot"
+    },
+    {
+      "name": "QR Setup",
+      "short_name": "QR Setup",
+      "description": "Wi-Fi, dashboard, and Home Assistant setup codes",
+      "url": "/setup.html"
     }
   ]
 }

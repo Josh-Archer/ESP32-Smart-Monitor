@@ -82,5 +82,8 @@ yarn-error.log*
 # Generated gzip assets
 /data/*.gz
 /data/**/*.gz
+
+# Firmware copy of web/setup.html (scripts/embed_setup_page.py)
+src/generated/
 credentials.cpp
 credentials_private.h
