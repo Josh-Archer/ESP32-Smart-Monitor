@@ -76,7 +76,7 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 ## Features
 
 - 📡 WiFi connectivity with custom DNS configuration, multi-SSID failover, and primary recovery
-- 🔄 OTA (Over-The-Air) firmware updates with **automatic rollback protection**
+- 🔄 OTA (Over-The-Air) firmware updates with **automatic rollback protection** and **completion Pushover alerts** (upload received, success, failure)
 - 🔐 **Signed OTA** - ECDSA P-256 verification before apply; optional AES-256 encrypted packages
 - 🛡️ **Smart Boot Failure Recovery** - Automatic rollback after 10 consecutive boot failures
 - 🏠 **Home Assistant Integration** - MQTT auto-discovery with 12+ sensors and controls

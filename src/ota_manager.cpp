@@ -4,6 +4,7 @@
 #include "notifications.h"
 #include "ota_crypto.h"
 #include "ota_signing_config.h"
+#include "ota_policy.h"
 
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
@@ -24,6 +25,12 @@ static size_t g_otaStreamTotal = 0;
 static bool g_otaSignatureChecked = false;
 static bool g_otaSignatureOk = false;
 
+// Track the completion notice without blocking ArduinoOTA's onStart callback.
+static bool g_arduinoOtaStartPending = false;
+static String g_arduinoOtaUploadType;
+static bool g_arduinoOtaFilesystemRejected = false;
+static bool g_arduinoOtaEnabled = false;
+
 // HTTP signed (optionally encrypted) OTA on a dedicated port so MQTT-only
 // builds still accept signed packages without enabling the full web UI.
 static const uint16_t SIGNED_OTA_PORT = 8267;
@@ -37,6 +44,45 @@ const char* getOtaSigningStatus() {
 static void logOta(const char* msg) {
   Serial.printf("[%10lu ms] [OTA] %s\r\n", millis(), msg);
   telnetPrintf("[%10lu ms] [OTA] %s\r\n", millis(), msg);
+}
+
+void notifyOtaReceived(const char* uploadType) {
+  char alertTitle[100];
+  char alertMessage[200];
+  snprintf(alertTitle, sizeof(alertTitle), "OTA Upload Received - %s", deviceName);
+  snprintf(alertMessage, sizeof(alertMessage),
+           "OTA upload transfer finished (%s). Current version: v%s.",
+           uploadType ? uploadType : "sketch", firmwareVersion);
+
+  Serial.printf("[%10lu ms] [OTA] Notification: %s - %s\r\n", millis(), alertTitle, alertMessage);
+  telnetPrintf("[%10lu ms] [OTA] Notification: %s - %s\r\n", millis(), alertTitle, alertMessage);
+  sendPushoverAlert(alertTitle, alertMessage, 0);
+}
+
+void notifyOtaSuccess(const char* details) {
+  char alertTitle[100];
+  char alertMessage[200];
+  snprintf(alertTitle, sizeof(alertTitle), "OTA Upload Successful - %s", deviceName);
+  snprintf(alertMessage, sizeof(alertMessage),
+           "%s. Current version: v%s. Device will restart.",
+           details ? details : "OTA update completed successfully", firmwareVersion);
+
+  Serial.printf("[%10lu ms] [OTA] Notification: %s - %s\r\n", millis(), alertTitle, alertMessage);
+  telnetPrintf("[%10lu ms] [OTA] Notification: %s - %s\r\n", millis(), alertTitle, alertMessage);
+  sendPushoverAlert(alertTitle, alertMessage, 0);
+}
+
+void notifyOtaFailure(const char* reason, int priority) {
+  char alertTitle[100];
+  char alertMessage[200];
+  snprintf(alertTitle, sizeof(alertTitle), "OTA Upload Failed - %s", deviceName);
+  snprintf(alertMessage, sizeof(alertMessage),
+           "OTA upload failed: %s. Previous firmware remains active.",
+           reason ? reason : "Unknown error");
+
+  Serial.printf("[%10lu ms] [OTA] Notification: %s - %s\r\n", millis(), alertTitle, alertMessage);
+  telnetPrintf("[%10lu ms] [OTA] Notification: %s - %s\r\n", millis(), alertTitle, alertMessage);
+  sendPushoverAlert(alertTitle, alertMessage, priority);
 }
 
 // After ArduinoOTA/Update sets the new boot partition, verify the appended
@@ -104,6 +150,14 @@ void initOTA() {
     g_otaStreamTotal = 0;
     g_otaSignatureChecked = false;
     g_otaSignatureOk = false;
+    g_arduinoOtaStartPending = true;
+    g_arduinoOtaUploadType = type;
+    g_arduinoOtaFilesystemRejected = otaFilesystemNeedsSignatureRejection(
+        ArduinoOTA.getCommand() == U_FLASH, otaSignatureRequired() || otaPublicKeyConfigured());
+    if (g_arduinoOtaFilesystemRejected) {
+      logOta("Filesystem OTA refused because signing is enabled; use a signed HTTP firmware package");
+      Update.abort();
+    }
     Serial.printf("\r\n[%10lu ms] [OTA] *** UPDATE INITIATED ***\r\n", millis());
     Serial.printf("[%10lu ms] [OTA] Current version: %s\r\n", millis(), firmwareVersion);
     Serial.printf("[%10lu ms] [OTA] Updating %s...\r\n", millis(), type.c_str());
@@ -116,10 +170,16 @@ void initOTA() {
     Serial.printf("\r\n[%10lu ms] [OTA] *** DOWNLOAD COMPLETE — VERIFYING ***\r\n", millis());
     telnetPrintf("[%10lu ms] [OTA] Download complete — verifying signature\r\n", millis());
 
+    if (g_arduinoOtaStartPending) {
+      g_arduinoOtaStartPending = false;
+      notifyOtaReceived(g_arduinoOtaUploadType.c_str());
+    }
+
     // Filesystem (SPIFFS) updates are not ECDSA-signed the same way; only
     // flash/sketch images require signature verification.
     if (ArduinoOTA.getCommand() != U_FLASH) {
       logOta("Filesystem OTA complete — rebooting");
+      notifyOtaSuccess("Filesystem OTA upload completed successfully");
       delay(1500);
       ESP.restart();
       return;
@@ -128,11 +188,13 @@ void initOTA() {
     if (finalizeSignedArduinoOta()) {
       Serial.printf("[%10lu ms] [OTA] *** UPDATE ACCEPTED ***\r\n", millis());
       Serial.printf("[%10lu ms] [OTA] Device will restart in 2 seconds...\r\n", millis());
+      notifyOtaSuccess("OTA update accepted and signature verified");
       delay(2000);
       ESP.restart();
     } else {
       Serial.printf("[%10lu ms] [OTA] *** UPDATE REJECTED — previous firmware bootable ***\r\n", millis());
       telnetPrintf("[%10lu ms] [OTA] UPDATE REJECTED — previous firmware remains bootable\r\n", millis());
+      notifyOtaFailure("Signature verification failed");
       // Do not reboot into the new image.
     }
   });
@@ -151,17 +213,64 @@ void initOTA() {
   ArduinoOTA.onError([](ota_error_t error) {
     Serial.printf("\r\n[%10lu ms] [OTA] *** UPDATE FAILED ***\r\n", millis());
     Serial.printf("[%10lu ms] [OTA] Error[%u]: ", millis(), error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Authentication Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    const char* errStr = "Unknown error";
+    if (error == OTA_AUTH_ERROR) {
+      errStr = "Authentication Failed";
+      Serial.println(errStr);
+    } else if (error == OTA_BEGIN_ERROR) {
+      errStr = "Begin Failed";
+      Serial.println(errStr);
+    } else if (error == OTA_CONNECT_ERROR) {
+      errStr = "Connect Failed";
+      Serial.println(errStr);
+    } else if (error == OTA_RECEIVE_ERROR) {
+      errStr = "Receive Failed";
+      Serial.println(errStr);
+    } else if (error == OTA_END_ERROR) {
+      errStr = "End Failed";
+      Serial.println(errStr);
+    } else {
+      Serial.println(errStr);
+    }
     // Ensure we never leave a half-applied image as the boot target.
     otaRestoreRunningBootPartition();
+
+    if (g_arduinoOtaStartPending) {
+      g_arduinoOtaStartPending = false;
+      notifyOtaReceived(g_arduinoOtaUploadType.c_str());
+    }
+
+    if (g_arduinoOtaFilesystemRejected) {
+      g_arduinoOtaFilesystemRejected = false;
+      notifyOtaFailure("Filesystem OTA is disabled while signature enforcement is enabled");
+      return;
+    }
+
+    char reason[64];
+    snprintf(reason, sizeof(reason), "%s (Error %u)", errStr, error);
+
+    if (error == OTA_AUTH_ERROR) {
+      static unsigned long lastAuthAlertMs = 0;
+      unsigned long now = millis();
+      if (!otaAuthAlertDue(now, lastAuthAlertMs)) {
+        Serial.printf("[%10lu ms] [OTA] Auth failure alert rate-limited\r\n", now);
+        telnetPrintf("[%10lu ms] [OTA] Auth failure alert rate-limited\r\n", now);
+      } else {
+        notifyOtaFailure(reason, OTA_AUTH_ALERT_PRIORITY);
+      }
+    } else {
+      notifyOtaFailure(reason, 1);
+    }
   });
 
-  ArduinoOTA.begin();
-  Serial.printf("[%10lu ms] [OTA] Ready! Device: %s.local\r\n", millis(), deviceName);
+  if (!otaPasswordConfigured(otaPassword)) {
+    logOta("ERROR: OTA_PASSWORD is empty; ArduinoOTA disabled until a non-empty password is configured");
+  } else {
+    ArduinoOTA.begin();
+    g_arduinoOtaEnabled = true;
+  }
+  Serial.printf("[%10lu ms] [OTA] %s Device: %s.local\r\n", millis(),
+                g_arduinoOtaEnabled ? "Ready!" : "ArduinoOTA disabled.", deviceName);
   Serial.printf("[%10lu ms] [OTA] Version: %s\r\n", millis(), firmwareVersion);
   Serial.printf("[%10lu ms] [OTA] Signing: %s\r\n", millis(), otaSigningStatusString());
 
@@ -239,10 +348,17 @@ static void handleSignedHttpClient(WiFiClient& client) {
     return;
   }
 
-  if (passwordHeader != String(otaPassword)) {
+  if (!otaPasswordMatches(otaPassword, passwordHeader.c_str())) {
     logOta("Signed HTTP OTA: authentication failed");
     sendResponse(401, "Unauthorized");
     client.stop();
+    static unsigned long lastHttpAuthAlertMs = 0;
+    unsigned long now = millis();
+    if (otaAuthAlertDue(now, lastHttpAuthAlertMs)) {
+      notifyOtaFailure("Signed HTTP OTA authentication failed", OTA_AUTH_ALERT_PRIORITY);
+    } else {
+      logOta("HTTP auth failure alert rate-limited");
+    }
     return;
   }
 
@@ -302,10 +418,13 @@ static void handleSignedHttpClient(WiFiClient& client) {
     }
   }
 
+  logOta("Signed HTTP OTA upload initiated");
+
   // Begin flash write for the *plaintext* image size.
   if (!Update.begin(payloadLen, U_FLASH)) {
     sendResponse(500, "Update.begin failed");
     client.stop();
+    notifyOtaFailure("HTTP OTA Update.begin failed");
     return;
   }
 
@@ -358,6 +477,8 @@ static void handleSignedHttpClient(WiFiClient& client) {
       mbedtls_sha256_free(&shaCtx);
       sendResponse(500, "Update.write failed (header)");
       client.stop();
+      notifyOtaReceived("signed-http");
+      notifyOtaFailure("HTTP OTA write header failed");
       return;
     }
     alreadyConsumed = ENC_HEADER_LEN;
@@ -401,6 +522,8 @@ static void handleSignedHttpClient(WiFiClient& client) {
     mbedtls_sha256_free(&shaCtx);
     sendResponse(400, "Incomplete body or write error");
     client.stop();
+    notifyOtaReceived("signed-http");
+    notifyOtaFailure("HTTP OTA transfer failed (incomplete body or write error)");
     return;
   }
 
@@ -419,6 +542,8 @@ static void handleSignedHttpClient(WiFiClient& client) {
       logOta("Signed HTTP OTA: signature verification FAILED — previous firmware unchanged");
       sendResponse(403, "Signature verification failed");
       client.stop();
+      notifyOtaReceived("signed-http");
+      notifyOtaFailure("HTTP OTA signature verification failed");
       return;
     }
     logOta(encrypted ? "Signed HTTP OTA: signature OK (encrypted package)"
@@ -430,6 +555,8 @@ static void handleSignedHttpClient(WiFiClient& client) {
     otaRestoreRunningBootPartition();
     sendResponse(500, "Update.end failed");
     client.stop();
+    notifyOtaReceived("signed-http");
+    notifyOtaFailure("HTTP OTA Update.end failed");
     return;
   }
 
@@ -440,6 +567,9 @@ static void handleSignedHttpClient(WiFiClient& client) {
   client.stop();
 
   logOta("Signed HTTP OTA applied successfully — rebooting");
+  notifyOtaReceived("signed-http");
+  notifyOtaSuccess(encrypted ? "Signed encrypted HTTP OTA applied successfully"
+                             : "Signed HTTP OTA applied successfully");
   delay(1500);
   ESP.restart();
 }
@@ -459,7 +589,13 @@ static void pollSignedHttpOta() {
 }
 
 void handleOTA() {
-  ArduinoOTA.handle();
+  if (g_arduinoOtaEnabled) {
+    ArduinoOTA.handle();
+  }
+  if (g_arduinoOtaStartPending) {
+    g_arduinoOtaStartPending = false;
+    notifyOtaReceived(g_arduinoOtaUploadType.c_str());
+  }
   pollSignedHttpOta();
 }
 

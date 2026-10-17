@@ -1,6 +1,12 @@
 #include "config.h"
 #include "credentials.h"
 
+#if !defined(UNIT_TEST) && !defined(MOCK_ARDUINO)
+#if !__has_include("credentials.cpp") && !__has_include("src/credentials.cpp")
+#error "src/credentials.cpp is missing! Copy credentials.template.cpp to src/credentials.cpp and set your Wi-Fi and OTA credentials."
+#endif
+#endif
+
 const char* firmwareVersion = "4.0.4";
 
 // WiFi Configuration (from credentials.h)

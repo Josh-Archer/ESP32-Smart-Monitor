@@ -1,4 +1,8 @@
+#if __has_include("credentials.h")
+#include "credentials.h"
+#else
 #include "src/credentials.h"
+#endif
 
 // INSTRUCTIONS:
 // 1. Copy this file to src/credentials.cpp

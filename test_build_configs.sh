@@ -32,9 +32,38 @@ if [ ! -f "platformio.ini" ]; then
     exit 1
 fi
 
+PIO_CMD="${PIO_CMD:-$(command -v platformio 2>/dev/null || command -v pio 2>/dev/null || echo "$HOME/.local/bin/platformio")}"
+
+# Ensure placeholder credentials exist for test builds if missing
+CLEANUP_CREDENTIALS=0
+CRED_FILE="src/credentials.cpp"
+if [ ! -f "$CRED_FILE" ]; then
+    print_status $YELLOW "Generating placeholder credentials for test build..."
+    cat <<'EOF' > "$CRED_FILE"
+#include "credentials.h"
+const char* WIFI_SSID = "";
+const char* WIFI_PASSWORD = "";
+const char* WIFI_SSID_SECONDARY = "";
+const char* WIFI_PASSWORD_SECONDARY = "";
+const char* OTA_PASSWORD = "";
+const char* PUSHOVER_TOKEN = "";
+const char* PUSHOVER_USER = "";
+const char* MQTT_USER = "";
+const char* MQTT_PASSWORD = "";
+EOF
+    CLEANUP_CREDENTIALS=1
+fi
+
+cleanup() {
+    if [ "$CLEANUP_CREDENTIALS" -eq 1 ]; then
+        rm -f "$CRED_FILE"
+    fi
+}
+trap cleanup EXIT INT TERM
+
 # Test 1: MQTT-only build (default)
 print_status $YELLOW "Testing MQTT-only build..."
-if ~/.local/bin/platformio run --environment esp32-c3-devkitm-1 > /tmp/build-mqtt.log 2>&1; then
+if $PIO_CMD run --environment esp32-c3-devkitm-1 > /tmp/build-mqtt.log 2>&1; then
     MQTT_SIZE=$(grep "Flash:" /tmp/build-mqtt.log | grep -o '[0-9]* bytes' | head -1)
     print_status $GREEN "✓ MQTT-only build successful - $MQTT_SIZE"
 else
@@ -45,7 +74,7 @@ fi
 
 # Test 2: WebServer-only build  
 print_status $YELLOW "Testing WebServer-only build..."
-if ~/.local/bin/platformio run --environment esp32-c3-devkitm-1-webserver > /tmp/build-web.log 2>&1; then
+if $PIO_CMD run --environment esp32-c3-devkitm-1-webserver > /tmp/build-web.log 2>&1; then
     WEB_SIZE=$(grep "Flash:" /tmp/build-web.log | grep -o '[0-9]* bytes' | head -1)
     print_status $GREEN "✓ WebServer-only build successful - $WEB_SIZE"
 else
@@ -56,7 +85,7 @@ fi
 
 # Test 3: Both MQTT and WebServer build
 print_status $YELLOW "Testing both MQTT and WebServer build..."
-if ~/.local/bin/platformio run --environment esp32-c3-devkitm-1-both > /tmp/build-both.log 2>&1; then
+if $PIO_CMD run --environment esp32-c3-devkitm-1-both > /tmp/build-both.log 2>&1; then
     BOTH_SIZE=$(grep "Flash:" /tmp/build-both.log | grep -o '[0-9]* bytes' | head -1)
     print_status $GREEN "✓ Both MQTT and WebServer build successful - $BOTH_SIZE"
 else
@@ -68,7 +97,7 @@ fi
 # Test 4: Serial variants
 print_status $YELLOW "Testing serial build variants..."
 for env in esp32-c3-devkitm-1-serial esp32-c3-devkitm-1-webserver-serial esp32-c3-devkitm-1-both-serial; do
-    if ~/.local/bin/platformio run --environment $env > /tmp/build-$env.log 2>&1; then
+    if $PIO_CMD run --environment $env > /tmp/build-$env.log 2>&1; then
         print_status $GREEN "✓ $env build successful"
     else
         print_status $RED "✗ $env build failed"
@@ -83,6 +112,26 @@ if python3 test_network_metrics.py > /tmp/build-net-metrics.log 2>&1; then
 else
     print_status $RED "✗ Network metrics tests failed"
     cat /tmp/build-net-metrics.log
+    exit 1
+fi
+
+# Test 6: OTA notification integration and unit tests
+print_status $YELLOW "Testing OTA notification integration and unit tests..."
+if python3 test_ota_notifications.py > /tmp/build-ota-notif.log 2>&1; then
+    print_status $GREEN "✓ OTA notification tests successful"
+else
+    print_status $RED "✗ OTA notification tests failed"
+    cat /tmp/build-ota-notif.log
+    exit 1
+fi
+
+# Test 7: Versioning fix validation
+print_status $YELLOW "Testing versioning fix validation..."
+if python3 test_versioning_fix.py > /tmp/build-versioning.log 2>&1; then
+    print_status $GREEN "✓ Versioning fix tests successful"
+else
+    print_status $RED "✗ Versioning fix tests failed"
+    cat /tmp/build-versioning.log
     exit 1
 fi
 

@@ -74,6 +74,12 @@ jobs:
           BOTH_FLASH=$(grep -Eo 'Flash:.*' build-both.log | grep -Eo '[0-9.]+%' | head -1)
           BOTH_FLASH_BYTES=$(grep -Eo 'Flash:.*' build-both.log | grep -Eo '[0-9,]+ bytes' | head -1 | tr -d ',')
           
+          # Build serial variants to cover all 6 environments
+          echo "Building serial variants..."
+          pio run --environment esp32-c3-devkitm-1-serial
+          pio run --environment esp32-c3-devkitm-1-webserver-serial
+          pio run --environment esp32-c3-devkitm-1-both-serial
+          
           # Output all values
           echo "mqtt_ram=$MQTT_RAM" >> $GITHUB_OUTPUT
           echo "mqtt_flash=$MQTT_FLASH" >> $GITHUB_OUTPUT
@@ -86,6 +92,11 @@ jobs:
           echo "both_flash_bytes=$BOTH_FLASH_BYTES" >> $GITHUB_OUTPUT
           
           echo "All builds completed successfully!"
+      - name: Run test suites
+        run: |
+          python3 test_network_metrics.py
+          python3 test_ota_notifications.py
+          python3 test_versioning_fix.py
       - name: Get main branch memory usage (for comparison)
         if: github.event_name == 'pull_request'
         id: main-build
