@@ -1,16 +1,11 @@
 #include "config.h"
 #include "credentials.h"
 
-// Weak fallback definitions for credentials when credentials.cpp is not present
-__attribute__((weak)) const char* WIFI_SSID = "";
-__attribute__((weak)) const char* WIFI_PASSWORD = "";
-__attribute__((weak)) const char* WIFI_SSID_SECONDARY = "";
-__attribute__((weak)) const char* WIFI_PASSWORD_SECONDARY = "";
-__attribute__((weak)) const char* OTA_PASSWORD = "";
-__attribute__((weak)) const char* PUSHOVER_TOKEN = "";
-__attribute__((weak)) const char* PUSHOVER_USER = "";
-__attribute__((weak)) const char* MQTT_USER = "";
-__attribute__((weak)) const char* MQTT_PASSWORD = "";
+#if !defined(UNIT_TEST) && !defined(MOCK_ARDUINO)
+#if !__has_include("credentials.cpp") && !__has_include("src/credentials.cpp")
+#error "src/credentials.cpp is missing! Copy credentials.template.cpp to src/credentials.cpp and set your Wi-Fi and OTA credentials."
+#endif
+#endif
 
 const char* firmwareVersion = "4.0.4";
 

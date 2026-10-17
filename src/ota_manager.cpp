@@ -175,20 +175,6 @@ void initOTA() {
       notifyOtaReceived(g_arduinoOtaUploadType.c_str());
     }
 
-    if (g_arduinoOtaFilesystemRejected) {
-      g_arduinoOtaFilesystemRejected = false;
-      otaRestoreRunningBootPartition();
-      notifyOtaFailure("Filesystem OTA is disabled while signature enforcement is enabled");
-      return;
-    }
-
-    if (g_arduinoOtaFilesystemRejected) {
-      g_arduinoOtaFilesystemRejected = false;
-      otaRestoreRunningBootPartition();
-      notifyOtaFailure("Filesystem OTA is disabled while signature enforcement is enabled");
-      return;
-    }
-
     // Filesystem (SPIFFS) updates are not ECDSA-signed the same way; only
     // flash/sketch images require signature verification.
     if (ArduinoOTA.getCommand() != U_FLASH) {
@@ -252,6 +238,12 @@ void initOTA() {
     if (g_arduinoOtaStartPending) {
       g_arduinoOtaStartPending = false;
       notifyOtaReceived(g_arduinoOtaUploadType.c_str());
+    }
+
+    if (g_arduinoOtaFilesystemRejected) {
+      g_arduinoOtaFilesystemRejected = false;
+      notifyOtaFailure("Filesystem OTA is disabled while signature enforcement is enabled");
+      return;
     }
 
     char reason[64];
@@ -432,7 +424,6 @@ static void handleSignedHttpClient(WiFiClient& client) {
   if (!Update.begin(payloadLen, U_FLASH)) {
     sendResponse(500, "Update.begin failed");
     client.stop();
-    notifyOtaReceived("signed-http");
     notifyOtaFailure("HTTP OTA Update.begin failed");
     return;
   }

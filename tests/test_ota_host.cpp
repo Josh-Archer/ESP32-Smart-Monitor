@@ -81,6 +81,7 @@ void test_explicit_network_timeouts() {
   pushoverUser = "user123";
   MockHTTPClient::reset();
   MockWiFiClientSecure::instancesCreated = 0;
+  MockWiFiClientSecure::connectCalls = 0;
 
   sendPushoverAlert("Test Title", "Test Message", 0);
 
@@ -90,6 +91,9 @@ void test_explicit_network_timeouts() {
   assert(MockHTTPClient::lastTimeout == 3000);
   assert(MockWiFiClientSecure::instancesCreated > 0);
   assert(MockWiFi::lastDnsTimeout == 3000);
+  assert(MockWiFiClientSecure::connectCalls == 1);
+  assert(MockWiFiClientSecure::lastConnectHost == "api.pushover.net");
+  assert(MockWiFiClientSecure::lastConnectIp == IPAddress(1, 2, 3, 4));
 }
 
 void test_url_encode_function() {

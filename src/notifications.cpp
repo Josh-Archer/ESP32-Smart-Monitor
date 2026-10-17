@@ -126,6 +126,11 @@ void sendPushoverAlert(const char* title, const char* message, int priority) {
   client.setHandshakeTimeout(3);
   client.setTimeout(3);
 
+  if (!client.connect(resolvedIp, 443, host.c_str(), nullptr, nullptr, nullptr)) {
+    Serial.printf("[%10lu ms] [PUSHOVER] Failed to connect to %s (%s)\r\n", millis(), host.c_str(), resolvedIp.toString().c_str());
+    return;
+  }
+
   HTTPClient http;
   http.setConnectTimeout(3000);
   http.setTimeout(3000);

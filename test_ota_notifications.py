@@ -48,9 +48,8 @@ class TestOtaBehavioralHost(unittest.TestCase):
         )
         if res.returncode != 0:
             err_msg = res.stderr
-            raise RuntimeError(
-                f"Failed to compile host test harness:\n{err_msg}"
-            )
+            msg = f"Failed to compile host test harness:\n{err_msg}"
+            raise RuntimeError(msg)
 
     def run_host_test(self, test_name):
         res = subprocess.run(
@@ -108,10 +107,8 @@ class TestOtaBehavioralHost(unittest.TestCase):
 
 def main():
     print("🔍 ESP32 Smart Monitor - OTA Notifications Validation")
-    print("=====================================================")
-    suite = unittest.defaultTestLoader.loadTestsFromTestCase(
-        TestOtaBehavioralHost
-    )
+    loader = unittest.defaultTestLoader
+    suite = loader.loadTestsFromTestCase(TestOtaBehavioralHost)
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     return 0 if result.wasSuccessful() else 1

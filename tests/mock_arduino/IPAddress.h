@@ -11,4 +11,6 @@ public:
   std::string toString() const { return "192.168.1.1"; }
   bool fromString(const char*) { return false; }
   uint32_t raw() const { return value; }
+  bool operator==(const IPAddress& other) const { return value == other.value; }
+  bool operator!=(const IPAddress& other) const { return value != other.value; }
 };
