@@ -14,6 +14,7 @@
 
 #include <WebServer.h>
 #include <ArduinoJson.h>
+#include <esp_ota_ops.h>
 
 WebServer server(80);
 
@@ -67,7 +68,14 @@ void handleStatus() {
   doc["wifi_rssi"] = WiFi.RSSI();
   doc["free_heap"] = ESP.getFreeHeap();
   doc["total_heap"] = ESP.getHeapSize();
-  doc["flash_size"] = ESP.getFlashChipSize();
+  // App partition (the running OTA slot), not the whole flash chip.
+  // getFreeSketchSpace() is the next slot's full size on this core, not
+  // unused bytes, so sketch size + free sketch space is not the slot length.
+  const esp_partition_t *runningApp = esp_ota_get_running_partition();
+  const uint32_t appPartitionSize = (runningApp != nullptr)
+      ? static_cast<uint32_t>(runningApp->size)
+      : ESP.getFreeSketchSpace();
+  doc["flash_size"] = appPartitionSize;
   doc["flash_used"] = ESP.getSketchSize();
   doc["wifi_connected"] = WiFi.isConnected();
   doc["wifi_ssid"] = getActiveSSID();

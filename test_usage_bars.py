@@ -6,7 +6,7 @@ Test script to validate Heap, Flash, and RSSI usage bars
 Validates that:
 1. features.md documents completed status for usage bars referencing issue #40
 2. src/web_server.cpp exposes total_heap, flash_size, and flash_used in /status
-3. web/index.html includes elements for RSSI, Heap Memory, and Flash Storage bars
+3. web/index.html includes elements for RSSI, Heap Memory, and App partition bars
 4. web/app.js defines methods: updateRssiBar, updateHeapBar, updateFlashBar, drawUsageBars, formatBytes
 5. Execution via Node.js validates DOM updates, bar widths, colors, and fallback logic
 """
@@ -52,6 +52,16 @@ class TestUsageBarsSourceIntegration(unittest.TestCase):
         self.assertIn('doc["flash_size"]', status_body, "handleStatus must include flash_size")
         self.assertIn('doc["flash_used"]', status_body, "handleStatus must include flash_used")
         self.assertIn('doc["wifi_rssi"]', status_body, "handleStatus must include wifi_rssi")
+        self.assertIn(
+            'esp_ota_get_running_partition()',
+            status_body,
+            "flash_size must be the running app partition, not the whole chip",
+        )
+        self.assertNotIn(
+            'getFlashChipSize',
+            status_body,
+            "handleStatus must not divide sketch size by the full flash chip",
+        )
 
     def test_index_html_contains_usage_bars_elements(self):
         index_html = os.path.join(PROJECT_ROOT, "web", "index.html")
@@ -64,6 +74,8 @@ class TestUsageBarsSourceIntegration(unittest.TestCase):
         self.assertIn('id="heap-usage"', content, "web/index.html must contain #heap-usage")
         self.assertIn('id="flash-usage"', content, "web/index.html must contain #flash-usage")
         self.assertIn('id="system-resources-row"', content, "web/index.html must contain #system-resources-row")
+        self.assertIn('App partition', content, "flash bar must be labelled App partition")
+        self.assertNotIn('Flash Storage', content, "flash bar must not be labelled Flash Storage")
 
     def test_app_js_defines_bar_methods(self):
         app_js = os.path.join(PROJECT_ROOT, "web", "app.js")
@@ -77,6 +89,16 @@ class TestUsageBarsSourceIntegration(unittest.TestCase):
         self.assertIn('formatBytes(', content, "web/app.js must define formatBytes()")
         self.assertIn('createRssiBarElement', content, "web/app.js must define createRssiBarElement")
         self.assertIn('createResourceBarElements', content, "web/app.js must define createResourceBarElements")
+        self.assertIn('App partition', content, "fallback markup must label the flash bar App partition")
+        self.assertNotIn('327680', content, "heap bar must not invent a 320KB total")
+        self.assertNotIn('4194304', content, "flash bar must not invent a 4MB chip total")
+        self.assertIn('Number.isFinite', content, "bar widths must reject non-finite numbers")
+        self.assertRegex(
+            content,
+            r'wifi_signal_percentage[\s\S]{0,240}Math\.min\(100,\s*Math\.max\(0,',
+            "wifi_signal_percentage must be clamped to 0-100",
+        )
+        self.assertIn('rssi === 0', content, "RSSI 0 must be treated as no signal")
 
 
 class TestUsageBarsLogicInNode(unittest.TestCase):
@@ -321,6 +343,168 @@ console.log(JSON.stringify({
         self.assertEqual(out["rssiPct"], 80)
         self.assertEqual(out["heapPct"], 39)
         self.assertEqual(out["flashPct"], 31)
+
+    def test_rssi_percentage_is_clamped_and_zero_is_not_full(self):
+        js = """
+const panel = new ESP32ControlPanel();
+
+panel.deviceData = { wifi_signal_percentage: 250, wifi_rssi: -90 };
+panel.updateRssiBar();
+const high = {
+    width: document.getElementById('rssi-bar').style.width,
+    valuenow: document.getElementById('rssi-bar').getAttribute('aria-valuenow')
+};
+
+panel.deviceData = { wifi_signal_percentage: -20, wifi_rssi: -90 };
+panel.updateRssiBar();
+const low = {
+    width: document.getElementById('rssi-bar').style.width,
+    valuenow: document.getElementById('rssi-bar').getAttribute('aria-valuenow')
+};
+
+panel.deviceData = { wifi_rssi: 0, wifi_signal_percentage: 100 };
+panel.updateRssiBar();
+const zero = {
+    width: document.getElementById('rssi-bar').style.width,
+    className: document.getElementById('rssi-bar').className,
+    valuenow: document.getElementById('rssi-bar').getAttribute('aria-valuenow')
+};
+
+panel.deviceData = { wifi_rssi: -45, wifi_connected: false };
+panel.updateRssiBar();
+const disconnected = {
+    width: document.getElementById('rssi-bar').style.width,
+    className: document.getElementById('rssi-bar').className
+};
+
+panel.deviceData = { wifi_signal_percentage: 'nope', wifi_rssi: -80 };
+panel.updateRssiBar();
+const nanPct = {
+    width: document.getElementById('rssi-bar').style.width
+};
+
+console.log(JSON.stringify({ high, low, zero, disconnected, nanPct }));
+"""
+        out = self.run_node_test(js)
+        self.assertEqual(out["high"]["width"], "100%")
+        self.assertEqual(out["high"]["valuenow"], "100")
+        self.assertEqual(out["low"]["width"], "0%")
+        self.assertEqual(out["low"]["valuenow"], "0")
+        self.assertEqual(out["zero"]["width"], "0%")
+        self.assertEqual(out["zero"]["valuenow"], "0")
+        self.assertNotIn("bg-success", out["zero"]["className"])
+        self.assertEqual(out["disconnected"]["width"], "0%")
+        self.assertNotIn("bg-success", out["disconnected"]["className"])
+        self.assertEqual(out["nanPct"]["width"], "0%")
+        self.assertNotIn("NaN", out["nanPct"]["width"])
+
+    def test_non_finite_and_missing_metrics_hide_bars(self):
+        js = """
+const panel = new ESP32ControlPanel();
+
+panel.deviceData = { free_heap: "abc", total_heap: 327680 };
+panel.updateHeapBar();
+const badHeap = {
+    width: document.getElementById('heap-bar').style.width,
+    display: document.getElementById('heap-bar').style.display,
+    usageText: document.getElementById('heap-usage').textContent
+};
+
+panel.deviceData = { flash_size: 1310720, flash_bytes: "zz" };
+panel.updateFlashBar();
+const badFlash = {
+    width: document.getElementById('flash-bar').style.width,
+    display: document.getElementById('flash-bar').style.display,
+    usageText: document.getElementById('flash-usage').textContent
+};
+
+panel.deviceData = { flash_chip_size: 4194304 };
+panel.updateFlashBar();
+const chipOnly = {
+    width: document.getElementById('flash-bar').style.width,
+    display: document.getElementById('flash-bar').style.display,
+    usageText: document.getElementById('flash-usage').textContent
+};
+
+panel.deviceData = {};
+panel.updateHeapBar();
+panel.updateFlashBar();
+const missing = {
+    heapWidth: document.getElementById('heap-bar').style.width,
+    heapDisplay: document.getElementById('heap-bar').style.display,
+    heapText: document.getElementById('heap-usage').textContent,
+    flashWidth: document.getElementById('flash-bar').style.width,
+    flashDisplay: document.getElementById('flash-bar').style.display,
+    flashText: document.getElementById('flash-usage').textContent
+};
+
+panel.deviceData = { total_heap: 0, free_heap: 1000, flash_size: 0, flash_used: 1000 };
+panel.updateHeapBar();
+panel.updateFlashBar();
+const zeros = {
+    heapWidth: document.getElementById('heap-bar').style.width,
+    flashWidth: document.getElementById('flash-bar').style.width
+};
+
+panel.deviceData = { free_heap: 400000, total_heap: 327680, flash_size: 1310720, flash_used: 2000000 };
+panel.updateHeapBar();
+panel.updateFlashBar();
+const capped = {
+    heapWidth: document.getElementById('heap-bar').style.width,
+    flashWidth: document.getElementById('flash-bar').style.width,
+    flashText: document.getElementById('flash-usage').textContent
+};
+
+console.log(JSON.stringify({ badHeap, badFlash, chipOnly, missing, zeros, capped }));
+"""
+        out = self.run_node_test(js)
+        self.assertEqual(out["badHeap"]["width"], "0%")
+        self.assertNotIn("NaN", out["badHeap"]["width"])
+        self.assertEqual(out["badHeap"]["display"], "none")
+        self.assertEqual(out["badHeap"]["usageText"], "n/a")
+
+        self.assertEqual(out["badFlash"]["width"], "0%")
+        self.assertNotIn("NaN", out["badFlash"]["width"])
+        self.assertEqual(out["badFlash"]["display"], "none")
+        self.assertEqual(out["badFlash"]["usageText"], "n/a")
+
+        self.assertEqual(out["chipOnly"]["display"], "none")
+        self.assertEqual(out["chipOnly"]["usageText"], "n/a")
+        self.assertNotIn("4.00 MB", out["chipOnly"]["usageText"])
+
+        self.assertEqual(out["missing"]["heapDisplay"], "none")
+        self.assertEqual(out["missing"]["flashDisplay"], "none")
+        self.assertEqual(out["missing"]["heapText"], "n/a")
+        self.assertEqual(out["missing"]["flashText"], "n/a")
+        self.assertNotIn("NaN", out["missing"]["heapWidth"])
+        self.assertNotIn("NaN", out["missing"]["flashWidth"])
+        self.assertNotIn("320.0 KB", out["missing"]["heapText"])
+        self.assertNotIn("4.00 MB", out["missing"]["flashText"])
+
+        self.assertEqual(out["zeros"]["heapWidth"], "0%")
+        self.assertEqual(out["zeros"]["flashWidth"], "0%")
+
+        self.assertEqual(out["capped"]["heapWidth"], "0%")
+        self.assertEqual(out["capped"]["flashWidth"], "100%")
+        self.assertIn("100%", out["capped"]["flashText"])
+
+    def test_app_partition_ratio(self):
+        js = """
+const panel = new ESP32ControlPanel();
+// 1.25MB app slot, 1MB sketch -> 80%
+panel.deviceData = { flash_size: 1310720, flash_used: 1048576 };
+panel.updateFlashBar();
+console.log(JSON.stringify({
+    width: document.getElementById('flash-bar').style.width,
+    usageText: document.getElementById('flash-usage').textContent,
+    display: document.getElementById('flash-bar').style.display
+}));
+"""
+        out = self.run_node_test(js)
+        self.assertEqual(out["width"], "80%")
+        self.assertIn("80%", out["usageText"])
+        self.assertIn("1.00 MB", out["usageText"])
+        self.assertNotEqual(out["display"], "none")
 
 
 def main():

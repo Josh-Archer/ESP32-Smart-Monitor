@@ -262,33 +262,79 @@ class ESP32ControlPanel {
         this.updateAlertControls();
     }
 
+    // RSSI 0 means no signal / unknown (WiFi.RSSI() when disconnected), not 0 dBm.
+    isRssiUnusable() {
+        const connected = this.deviceData.wifi_connected;
+        if (connected === false || connected === 'false') return true;
+        const rssi = this.deviceData.wifi_rssi;
+        return rssi === 0 || rssi === '0';
+    }
+
+    finiteNumber(value) {
+        if (typeof value === 'number') {
+            return Number.isFinite(value) ? value : null;
+        }
+        if (typeof value === 'string' && value.trim() !== '') {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : null;
+        }
+        return null;
+    }
+
+    scaleKilobytes(value) {
+        const n = this.finiteNumber(value);
+        return n === null ? null : n * 1024;
+    }
+
+    clampPercent(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 0;
+        return Math.min(100, Math.max(0, Math.round(n)));
+    }
+
+    paintBar(bar, pct, barClass, visible) {
+        const safe = this.clampPercent(pct);
+        if (!bar) return safe;
+        bar.style.width = `${safe}%`;
+        bar.setAttribute('aria-valuenow', String(safe));
+        bar.className = `progress-bar ${barClass}`;
+        bar.style.display = visible ? '' : 'none';
+        const track = bar.parentElement;
+        if (track && typeof track.className === 'string' && track.className.split(/\s+/).includes('progress')) {
+            track.style.display = visible ? '' : 'none';
+        }
+        return safe;
+    }
+
     updateWiFiSignal() {
         const rssi = this.deviceData.wifi_rssi;
         const signalElement = document.getElementById('wifi-signal');
         const iconElement = document.getElementById('wifi-icon');
-        
-        let signalText = 'Unknown';
-        let iconClass = 'bi bi-wifi';
-        let colorClass = '';
-        
-        if (rssi > -50) {
-            signalText = `Excellent (${rssi} dBm)`;
-            iconClass = 'bi bi-wifi';
-            colorClass = 'wifi-excellent';
-        } else if (rssi > -60) {
-            signalText = `Good (${rssi} dBm)`;
-            iconClass = 'bi bi-wifi';
-            colorClass = 'wifi-good';
-        } else if (rssi > -70) {
-            signalText = `Fair (${rssi} dBm)`;
-            iconClass = 'bi bi-wifi-1';
-            colorClass = 'wifi-fair';
-        } else {
-            signalText = `Poor (${rssi} dBm)`;
-            iconClass = 'bi bi-wifi-off';
-            colorClass = 'wifi-poor';
+
+        let signalText = 'No signal';
+        let iconClass = 'bi bi-wifi-off';
+        let colorClass = 'wifi-poor';
+
+        if (!this.isRssiUnusable() && typeof rssi === 'number' && Number.isFinite(rssi)) {
+            if (rssi > -50) {
+                signalText = `Excellent (${rssi} dBm)`;
+                iconClass = 'bi bi-wifi';
+                colorClass = 'wifi-excellent';
+            } else if (rssi > -60) {
+                signalText = `Good (${rssi} dBm)`;
+                iconClass = 'bi bi-wifi';
+                colorClass = 'wifi-good';
+            } else if (rssi > -70) {
+                signalText = `Fair (${rssi} dBm)`;
+                iconClass = 'bi bi-wifi-1';
+                colorClass = 'wifi-fair';
+            } else {
+                signalText = `Poor (${rssi} dBm)`;
+                iconClass = 'bi bi-wifi-off';
+                colorClass = 'wifi-poor';
+            }
         }
-        
+
         if (signalElement) signalElement.textContent = signalText;
         if (iconElement) iconElement.className = `${iconClass} ${colorClass} fs-2`;
         this.updateRssiBar();
@@ -298,54 +344,75 @@ class ESP32ControlPanel {
         const rssi = this.deviceData.wifi_rssi;
         let pct = 0;
         let barClass = 'bg-danger';
+        const unusable = this.isRssiUnusable();
 
-        if (this.deviceData.wifi_signal_percentage !== undefined) {
-            pct = parseInt(this.deviceData.wifi_signal_percentage, 10) || 0;
-        } else if (typeof rssi === 'number') {
+        if (unusable) {
+            // Disconnected or RSSI 0 must not render as a full green bar.
+            pct = 0;
+            barClass = 'bg-danger';
+        } else if (this.deviceData.wifi_signal_percentage !== undefined && this.deviceData.wifi_signal_percentage !== null) {
+            pct = Math.min(100, Math.max(0, parseInt(this.deviceData.wifi_signal_percentage, 10) || 0));
+        } else if (typeof rssi === 'number' && Number.isFinite(rssi)) {
             pct = Math.min(100, Math.max(0, Math.round(2 * (rssi + 100))));
         }
 
-        if (rssi > -50 || pct >= 80) {
-            barClass = 'bg-success';
-        } else if (rssi > -60 || pct >= 60) {
-            barClass = 'bg-info';
-        } else if (rssi > -70 || pct >= 40) {
-            barClass = 'bg-warning';
-        } else {
-            barClass = 'bg-danger';
+        if (!unusable) {
+            if (rssi > -50 || pct >= 80) {
+                barClass = 'bg-success';
+            } else if (rssi > -60 || pct >= 60) {
+                barClass = 'bg-info';
+            } else if (rssi > -70 || pct >= 40) {
+                barClass = 'bg-warning';
+            } else {
+                barClass = 'bg-danger';
+            }
         }
 
         let rssiBar = document.getElementById('rssi-bar') || document.getElementById('wifi-bar');
         if (!rssiBar) {
             rssiBar = this.createRssiBarElement();
         }
-        if (rssiBar) {
-            rssiBar.style.width = `${pct}%`;
-            rssiBar.setAttribute('aria-valuenow', pct);
-            rssiBar.className = `progress-bar ${barClass}`;
-        }
+        pct = this.paintBar(rssiBar, pct, barClass, true);
         return { pct, rssi, barClass };
     }
 
     updateHeapBar() {
-        const freeHeap = this.deviceData.free_heap !== undefined ? 
-            this.deviceData.free_heap : 
-            (this.deviceData.free_memory_kb !== undefined ? this.deviceData.free_memory_kb * 1024 : null);
+        const freeHeap = this.deviceData.free_heap !== undefined
+            ? this.finiteNumber(this.deviceData.free_heap)
+            : (this.deviceData.free_memory_kb !== undefined
+                ? this.scaleKilobytes(this.deviceData.free_memory_kb)
+                : null);
 
-        const totalHeap = this.deviceData.total_heap !== undefined ? 
-            this.deviceData.total_heap : 
-            (this.deviceData.heap_size !== undefined ? 
-                this.deviceData.heap_size : 
-                (this.deviceData.total_memory_kb !== undefined ? this.deviceData.total_memory_kb * 1024 : 327680));
+        let totalHeap = null;
+        if (this.deviceData.total_heap !== undefined) {
+            totalHeap = this.finiteNumber(this.deviceData.total_heap);
+        } else if (this.deviceData.heap_size !== undefined) {
+            totalHeap = this.finiteNumber(this.deviceData.heap_size);
+        } else if (this.deviceData.total_memory_kb !== undefined) {
+            totalHeap = this.scaleKilobytes(this.deviceData.total_memory_kb);
+        }
+
+        const freePercent = this.deviceData.free_memory_percent !== undefined
+            ? this.finiteNumber(this.deviceData.free_memory_percent)
+            : null;
 
         let usedHeap = 0;
         let pct = 0;
-        if (freeHeap !== null && totalHeap > 0) {
+        let visible = false;
+        if (totalHeap !== null && totalHeap > 0 && freeHeap !== null) {
             usedHeap = Math.max(0, totalHeap - freeHeap);
-            pct = Math.min(100, Math.max(0, Math.round((usedHeap / totalHeap) * 100)));
-        } else if (this.deviceData.free_memory_percent !== undefined) {
-            pct = Math.min(100, Math.max(0, 100 - parseInt(this.deviceData.free_memory_percent, 10)));
-            usedHeap = Math.round((pct / 100) * totalHeap);
+            pct = this.clampPercent((usedHeap / totalHeap) * 100);
+            visible = true;
+        } else if (totalHeap !== null && totalHeap <= 0) {
+            usedHeap = 0;
+            pct = 0;
+            visible = true;
+        } else if (freePercent !== null) {
+            pct = this.clampPercent(100 - freePercent);
+            usedHeap = (totalHeap !== null && totalHeap > 0)
+                ? Math.round((pct / 100) * totalHeap)
+                : 0;
+            visible = true;
         }
 
         let barClass = 'progress-bar-memory';
@@ -353,8 +420,6 @@ class ESP32ControlPanel {
             barClass = 'bg-danger';
         } else if (pct >= 70) {
             barClass = 'bg-warning';
-        } else {
-            barClass = 'progress-bar-memory';
         }
 
         let heapBar = document.getElementById('heap-bar');
@@ -365,41 +430,54 @@ class ESP32ControlPanel {
             heapUsage = document.getElementById('heap-usage');
         }
 
-        if (heapBar) {
-            heapBar.style.width = `${pct}%`;
-            heapBar.setAttribute('aria-valuenow', pct);
-            heapBar.className = `progress-bar ${barClass}`;
-        }
+        pct = this.paintBar(heapBar, pct, barClass, visible);
         if (heapUsage) {
-            heapUsage.textContent = `${this.formatBytes(usedHeap)} / ${this.formatBytes(totalHeap)} (${pct}%)`;
+            if (!visible) {
+                heapUsage.textContent = 'n/a';
+            } else if (totalHeap !== null) {
+                heapUsage.textContent = `${this.formatBytes(usedHeap)} / ${this.formatBytes(totalHeap)} (${pct}%)`;
+            } else {
+                heapUsage.textContent = `${pct}%`;
+            }
         }
-        return { usedHeap, totalHeap, pct };
+        return { usedHeap, totalHeap, pct, visible };
     }
 
     updateFlashBar() {
-        const flashSize = this.deviceData.flash_size !== undefined ? 
-            this.deviceData.flash_size : 
-            (this.deviceData.flash_chip_size !== undefined ? this.deviceData.flash_chip_size : 4194304);
-
-        const flashUsed = this.deviceData.flash_used !== undefined ? 
-            this.deviceData.flash_used : 
-            (this.deviceData.sketch_size !== undefined ? 
-                this.deviceData.sketch_size : 
-                (this.deviceData.flash_bytes !== undefined ? parseInt(this.deviceData.flash_bytes, 10) : null));
-
-        let pct = 0;
-        let barClass = 'bg-info';
-
-        if (flashUsed !== null && flashSize > 0) {
-            pct = Math.min(100, Math.max(0, Math.round((flashUsed / flashSize) * 100)));
+        // flash_size is the app partition. Do not fall back to the chip size.
+        let flashSize = null;
+        if (this.deviceData.flash_size !== undefined) {
+            flashSize = this.finiteNumber(this.deviceData.flash_size);
+        } else if (this.deviceData.app_partition_size !== undefined) {
+            flashSize = this.finiteNumber(this.deviceData.app_partition_size);
+        } else if (this.deviceData.sketch_space !== undefined) {
+            flashSize = this.finiteNumber(this.deviceData.sketch_space);
         }
 
+        let flashUsed = null;
+        if (this.deviceData.flash_used !== undefined) {
+            flashUsed = this.finiteNumber(this.deviceData.flash_used);
+        } else if (this.deviceData.sketch_size !== undefined) {
+            flashUsed = this.finiteNumber(this.deviceData.sketch_size);
+        } else if (this.deviceData.flash_bytes !== undefined) {
+            flashUsed = this.finiteNumber(this.deviceData.flash_bytes);
+        }
+
+        let pct = 0;
+        let visible = false;
+        if (flashSize !== null && flashSize > 0 && flashUsed !== null) {
+            pct = this.clampPercent((flashUsed / flashSize) * 100);
+            visible = true;
+        } else if (flashSize !== null && flashSize <= 0) {
+            pct = 0;
+            visible = true;
+        }
+
+        let barClass = 'bg-info';
         if (pct >= 90) {
             barClass = 'bg-danger';
         } else if (pct >= 75) {
             barClass = 'bg-warning';
-        } else {
-            barClass = 'bg-info';
         }
 
         let flashBar = document.getElementById('flash-bar');
@@ -410,19 +488,19 @@ class ESP32ControlPanel {
             flashUsage = document.getElementById('flash-usage');
         }
 
-        if (flashBar) {
-            flashBar.style.width = `${pct}%`;
-            flashBar.setAttribute('aria-valuenow', pct);
-            flashBar.className = `progress-bar ${barClass}`;
-        }
+        pct = this.paintBar(flashBar, pct, barClass, visible);
         if (flashUsage) {
-            if (flashUsed !== null) {
+            if (!visible) {
+                flashUsage.textContent = 'n/a';
+            } else if (flashUsed !== null && flashSize !== null) {
                 flashUsage.textContent = `${this.formatBytes(flashUsed)} / ${this.formatBytes(flashSize)} (${pct}%)`;
-            } else {
+            } else if (flashSize !== null) {
                 flashUsage.textContent = `${this.formatBytes(flashSize)} total`;
+            } else {
+                flashUsage.textContent = 'n/a';
             }
         }
-        return { flashUsed, flashSize, pct };
+        return { flashUsed, flashSize, pct, visible };
     }
 
     drawUsageBars() {
@@ -481,7 +559,7 @@ class ESP32ControlPanel {
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <div>
-                                <h6 class="card-title text-muted mb-1">Flash Storage</h6>
+                                <h6 class="card-title text-muted mb-1">App partition</h6>
                                 <h6 id="flash-usage" class="mb-0">Loading...</h6>
                             </div>
                             <div class="align-self-center">
