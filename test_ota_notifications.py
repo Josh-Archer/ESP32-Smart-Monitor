@@ -1,168 +1,116 @@
 #!/usr/bin/env python3
 """
-Test script to validate OTA upload notifications
-================================================
+Test script to validate OTA upload notifications and behaviour
+==============================================================
 
 Validates that:
-1. ota_manager.h declares notifyOtaStart, notifyOtaSuccess, notifyOtaFailure
-2. ota_manager.cpp includes notifications.h
-3. ArduinoOTA.onStart triggers notification on upload start
-4. ArduinoOTA.onEnd triggers notification on upload success (and sig failure)
-5. ArduinoOTA.onError triggers notification on upload failure
-6. handleSignedHttpClient triggers start, success, and failure notifications
-7. Notification title, message, and priority formatting match specifications
-8. OTA error code translation properly maps error constants to readable strings
+1. Pushover alert returns early without network calls when token/user is empty
+2. Explicit connect and read timeouts (3000ms) and TLS timeout are set
+3. urlEncode properly escapes special characters (&, +, spaces, etc.)
+4. Pushover POST payloads correctly encode title, message, and credentials
+5. OTA updates are rejected when OTA_PASSWORD is empty or credentials missing
+6. Bad password attempts trigger priority 0 alerts and are rate-limited
+7. ArduinoOTA.onStart does not block before espota connects back (deferred)
+8. Signed HTTP OTA sends HTTP response before dispatching notifications
+9. Notification titles, messages, and priority formatting match specifications
+10. OTA error code translation properly maps error constants to strings
 """
 
 import os
-import re
+import subprocess
 import sys
 import unittest
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+HOST_TEST_SOURCE = os.path.join(PROJECT_ROOT, "tests", "test_ota_host.cpp")
+HOST_TEST_BIN = "/tmp/test_ota_host"
 
 
-class TestOtaNotificationSourceIntegration(unittest.TestCase):
-    """Verifies that ota_manager properly integrates notifications."""
+class TestOtaBehavioralHost(unittest.TestCase):
+    """Behavioral host tests executing compiled C++ firmware logic."""
 
     @classmethod
     def setUpClass(cls):
-        header_path = os.path.join(PROJECT_ROOT, "src", "ota_manager.h")
-        with open(header_path, "r", encoding="utf-8") as f:
-            cls.header_source = f.read()
+        mock_include = os.path.join(PROJECT_ROOT, "tests", "mock_arduino")
+        src_include = os.path.join(PROJECT_ROOT, "src")
+        compile_cmd = [
+            "g++",
+            "-std=c++17",
+            "-O2",
+            f"-I{mock_include}",
+            f"-I{src_include}",
+            HOST_TEST_SOURCE,
+            "-o",
+            HOST_TEST_BIN,
+        ]
+        res = subprocess.run(
+            compile_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if res.returncode != 0:
+            err_msg = res.stderr
+            raise RuntimeError(
+                f"Failed to compile host test harness:\n{err_msg}"
+            )
 
-        source_path = os.path.join(PROJECT_ROOT, "src", "ota_manager.cpp")
-        with open(source_path, "r", encoding="utf-8") as f:
-            cls.cpp_source = f.read()
-
-    def test_notifications_header_included(self):
-        self.assertRegex(
-            self.cpp_source,
-            r'#include\s+["<]notifications\.h[">]',
-            "src/ota_manager.cpp must include notifications.h",
+    def run_host_test(self, test_name):
+        res = subprocess.run(
+            [HOST_TEST_BIN, test_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
-
-    def test_ota_notification_functions_declared_in_header(self):
-        self.assertIn(
-            "notifyOtaStart",
-            self.header_source,
-            "ota_manager.h must declare notifyOtaStart",
-        )
-        self.assertIn(
-            "notifyOtaSuccess",
-            self.header_source,
-            "ota_manager.h must declare notifyOtaSuccess",
-        )
-        self.assertIn(
-            "notifyOtaFailure",
-            self.header_source,
-            "ota_manager.h must declare notifyOtaFailure",
-        )
-
-    def test_ota_notification_helpers_call_send_pushover_alert(self):
-        # notifyOtaStart must invoke sendPushoverAlert with priority 0
-        self.assertRegex(
-            self.cpp_source,
-            r'void\s+notifyOtaStart[\s\S]+?'
-            r'sendPushoverAlert\s*\([^;]+?,\s*0\s*\);',
-            "notifyOtaStart must call sendPushoverAlert with priority 0",
-        )
-        # notifyOtaSuccess must invoke sendPushoverAlert with priority 0
-        self.assertRegex(
-            self.cpp_source,
-            r'void\s+notifyOtaSuccess[\s\S]+?'
-            r'sendPushoverAlert\s*\([^;]+?,\s*0\s*\);',
-            "notifyOtaSuccess must call sendPushoverAlert with priority 0",
-        )
-        # notifyOtaFailure must invoke sendPushoverAlert with priority 1
-        self.assertRegex(
-            self.cpp_source,
-            r'void\s+notifyOtaFailure[\s\S]+?'
-            r'sendPushoverAlert\s*\([^;]+?,\s*1\s*\);',
-            "notifyOtaFailure must call sendPushoverAlert with priority 1",
+        self.assertEqual(
+            res.returncode,
+            0,
+            f"Host test {test_name} failed:\n{res.stdout}\n{res.stderr}",
         )
 
-    def test_arduino_ota_on_start_invokes_notify_ota_start(self):
-        on_start_match = re.search(
-            r'ArduinoOTA\.onStart\s*\(\s*\[\s*\]\s*\(\s*\)\s*\{'
-            r'([\s\S]+?)\}\s*\);',
-            self.cpp_source,
-        )
-        self.assertIsNotNone(
-            on_start_match,
-            "ArduinoOTA.onStart callback should be defined in ota_manager.cpp",
-        )
-        body = on_start_match.group(1)
-        self.assertIn(
-            "notifyOtaStart",
-            body,
-            "ArduinoOTA.onStart must call notifyOtaStart",
-        )
+    def test_empty_token_returns_early(self):
+        """Pushover alert must return early with 0 network calls."""
+        self.run_host_test("test_empty_token_returns_early")
 
-    def test_arduino_ota_on_end_invokes_success_and_failure(self):
-        on_end_match = re.search(
-            r'ArduinoOTA\.onEnd\s*\(\s*\[\s*\]\s*\(\s*\)\s*\{'
-            r'([\s\S]+?)\}\s*\);',
-            self.cpp_source,
-        )
-        self.assertIsNotNone(
-            on_end_match,
-            "ArduinoOTA.onEnd callback should be defined in ota_manager.cpp",
-        )
-        body = on_end_match.group(1)
-        self.assertIn(
-            "notifyOtaSuccess",
-            body,
-            "ArduinoOTA.onEnd must call notifyOtaSuccess",
-        )
-        self.assertIn(
-            "notifyOtaFailure",
-            body,
-            "ArduinoOTA.onEnd must call notifyOtaFailure on signature reject",
-        )
+    def test_null_token_returns_early(self):
+        """Pushover alert must return early when token is null."""
+        self.run_host_test("test_null_token_returns_early")
 
-    def test_arduino_ota_on_error_invokes_notify_ota_failure(self):
-        on_error_match = re.search(
-            r'ArduinoOTA\.onError\s*\(\s*\[\s*\]\s*\([^)]*\)\s*\{'
-            r'([\s\S]+?)\}\s*\);',
-            self.cpp_source,
-        )
-        self.assertIsNotNone(
-            on_error_match,
-            "ArduinoOTA.onError callback should be in ota_manager.cpp",
-        )
-        body = on_error_match.group(1)
-        self.assertIn(
-            "notifyOtaFailure",
-            body,
-            "ArduinoOTA.onError must call notifyOtaFailure",
-        )
+    def test_empty_user_returns_early(self):
+        """Pushover alert must return early when user is empty."""
+        self.run_host_test("test_empty_user_returns_early")
 
-    def test_signed_http_ota_invokes_notifications(self):
-        handle_http_match = re.search(
-            r'void\s+handleSignedHttpClient\s*\([^)]*\)\s*\{([\s\S]+?)\n\}',
-            self.cpp_source,
-        )
-        self.assertIsNotNone(
-            handle_http_match,
-            "handleSignedHttpClient should be defined in ota_manager.cpp",
-        )
-        body = handle_http_match.group(1)
-        self.assertIn(
-            "notifyOtaStart",
-            body,
-            "handleSignedHttpClient must call notifyOtaStart",
-        )
-        self.assertIn(
-            "notifyOtaSuccess",
-            body,
-            "handleSignedHttpClient must call notifyOtaSuccess",
-        )
-        self.assertIn(
-            "notifyOtaFailure",
-            body,
-            "handleSignedHttpClient must call notifyOtaFailure",
-        )
+    def test_null_user_returns_early(self):
+        """Pushover alert must return early when user is null."""
+        self.run_host_test("test_null_user_returns_early")
+
+    def test_explicit_network_timeouts(self):
+        """Pushover alert must configure short explicit timeouts."""
+        self.run_host_test("test_explicit_network_timeouts")
+
+    def test_url_encode_function(self):
+        """urlEncode must properly encode unreserved chars and symbols."""
+        self.run_host_test("test_url_encode_function")
+
+    def test_pushover_post_body_url_encoding(self):
+        """Pushover POST body must URL-encode payload fields."""
+        self.run_host_test("test_pushover_post_body_url_encoding")
+
+    def test_empty_ota_password_rejected(self):
+        """OTA must be rejected when OTA_PASSWORD is empty."""
+        self.run_host_test("test_empty_ota_password_rejected")
+
+    def test_auth_failure_rate_limiting_and_priority(self):
+        """Bad passwords must send priority 0 alerts and debounce."""
+        self.run_host_test("test_auth_failure_rate_limiting_and_priority")
+
+    def test_arduino_ota_start_notice_deferred(self):
+        """ArduinoOTA start notice must not block espota connect."""
+        self.run_host_test("test_arduino_ota_start_notice_deferred")
+
+    def test_http_ota_response_before_notification(self):
+        """Signed HTTP OTA must send HTTP response before notifying."""
+        self.run_host_test("test_http_ota_response_before_notification")
 
 
 class TestOtaNotificationFormattingAndLogic(unittest.TestCase):
@@ -268,7 +216,7 @@ def main():
     print("🔍 ESP32 Smart Monitor - OTA Notifications Validation")
     print("=====================================================")
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(
-        TestOtaNotificationSourceIntegration
+        TestOtaBehavioralHost
     )
     suite.addTests(
         unittest.defaultTestLoader.loadTestsFromTestCase(
