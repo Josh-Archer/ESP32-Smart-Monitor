@@ -1,5 +1,5 @@
 - Rollback on failure 
-- Usage bars for memory/cpu/flash
+- ~~Usage bars for memory/cpu/flash~~ **Done (#40)** — Heap, flash, and RSSI bars in web UI
 - upload alert and finish alert
 - Multi-SSID self-healing (primary + secondary WiFi, failover, recover to primary)
 - HA/MQTT active SSID + network role sensors

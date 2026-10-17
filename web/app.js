@@ -10,16 +10,20 @@ class ESP32ControlPanel {
         this.deferredPrompt = null; // For PWA installation
         // Base URL: always use device mDNS directly
         this.base = 'http://poop-monitor.local';
-        this.init();
+        if (typeof window !== 'undefined') {
+            this.init();
+        }
     }
 
     api(path) { return `${this.base}${path}`; }
 
     async init() {
         // Check for cache bust parameter
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('cb') || urlParams.has('bust')) {
-            await this.bustCacheQuiet();
+        if (typeof window !== 'undefined' && window.location) {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('cb') || urlParams.has('bust')) {
+                await this.bustCacheQuiet();
+            }
         }
         
         await this.initPWA();
@@ -245,8 +249,13 @@ class ESP32ControlPanel {
         document.getElementById('ip').textContent = this.deviceData.ip;
         document.getElementById('uptime').textContent = this.deviceData.current_uptime_formatted || this.formatUptime(this.deviceData.uptime);
         
-        // WiFi signal strength
+        // WiFi signal strength and RSSI bar
         this.updateWiFiSignal();
+        this.updateRssiBar();
+
+        // System resource usage bars (heap and flash)
+        this.updateHeapBar();
+        this.updateFlashBar();
         
         // Update alert status and controls
         this.updateAlertStatus();
@@ -280,8 +289,213 @@ class ESP32ControlPanel {
             colorClass = 'wifi-poor';
         }
         
-        signalElement.textContent = signalText;
-        iconElement.className = `${iconClass} ${colorClass} fs-2`;
+        if (signalElement) signalElement.textContent = signalText;
+        if (iconElement) iconElement.className = `${iconClass} ${colorClass} fs-2`;
+        this.updateRssiBar();
+    }
+
+    updateRssiBar() {
+        const rssi = this.deviceData.wifi_rssi;
+        let pct = 0;
+        let barClass = 'bg-danger';
+
+        if (this.deviceData.wifi_signal_percentage !== undefined) {
+            pct = parseInt(this.deviceData.wifi_signal_percentage, 10) || 0;
+        } else if (typeof rssi === 'number') {
+            pct = Math.min(100, Math.max(0, Math.round(2 * (rssi + 100))));
+        }
+
+        if (rssi > -50 || pct >= 80) {
+            barClass = 'bg-success';
+        } else if (rssi > -60 || pct >= 60) {
+            barClass = 'bg-info';
+        } else if (rssi > -70 || pct >= 40) {
+            barClass = 'bg-warning';
+        } else {
+            barClass = 'bg-danger';
+        }
+
+        let rssiBar = document.getElementById('rssi-bar') || document.getElementById('wifi-bar');
+        if (!rssiBar) {
+            rssiBar = this.createRssiBarElement();
+        }
+        if (rssiBar) {
+            rssiBar.style.width = `${pct}%`;
+            rssiBar.setAttribute('aria-valuenow', pct);
+            rssiBar.className = `progress-bar ${barClass}`;
+        }
+        return { pct, rssi, barClass };
+    }
+
+    updateHeapBar() {
+        const freeHeap = this.deviceData.free_heap !== undefined ? 
+            this.deviceData.free_heap : 
+            (this.deviceData.free_memory_kb !== undefined ? this.deviceData.free_memory_kb * 1024 : null);
+
+        const totalHeap = this.deviceData.total_heap !== undefined ? 
+            this.deviceData.total_heap : 
+            (this.deviceData.heap_size !== undefined ? 
+                this.deviceData.heap_size : 
+                (this.deviceData.total_memory_kb !== undefined ? this.deviceData.total_memory_kb * 1024 : 327680));
+
+        let usedHeap = 0;
+        let pct = 0;
+        if (freeHeap !== null && totalHeap > 0) {
+            usedHeap = Math.max(0, totalHeap - freeHeap);
+            pct = Math.min(100, Math.max(0, Math.round((usedHeap / totalHeap) * 100)));
+        } else if (this.deviceData.free_memory_percent !== undefined) {
+            pct = Math.min(100, Math.max(0, 100 - parseInt(this.deviceData.free_memory_percent, 10)));
+            usedHeap = Math.round((pct / 100) * totalHeap);
+        }
+
+        let barClass = 'progress-bar-memory';
+        if (pct >= 85) {
+            barClass = 'bg-danger';
+        } else if (pct >= 70) {
+            barClass = 'bg-warning';
+        } else {
+            barClass = 'progress-bar-memory';
+        }
+
+        let heapBar = document.getElementById('heap-bar');
+        let heapUsage = document.getElementById('heap-usage');
+        if (!heapBar || !heapUsage) {
+            this.createResourceBarElements();
+            heapBar = document.getElementById('heap-bar');
+            heapUsage = document.getElementById('heap-usage');
+        }
+
+        if (heapBar) {
+            heapBar.style.width = `${pct}%`;
+            heapBar.setAttribute('aria-valuenow', pct);
+            heapBar.className = `progress-bar ${barClass}`;
+        }
+        if (heapUsage) {
+            heapUsage.textContent = `${this.formatBytes(usedHeap)} / ${this.formatBytes(totalHeap)} (${pct}%)`;
+        }
+        return { usedHeap, totalHeap, pct };
+    }
+
+    updateFlashBar() {
+        const flashSize = this.deviceData.flash_size !== undefined ? 
+            this.deviceData.flash_size : 
+            (this.deviceData.flash_chip_size !== undefined ? this.deviceData.flash_chip_size : 4194304);
+
+        const flashUsed = this.deviceData.flash_used !== undefined ? 
+            this.deviceData.flash_used : 
+            (this.deviceData.sketch_size !== undefined ? 
+                this.deviceData.sketch_size : 
+                (this.deviceData.flash_bytes !== undefined ? parseInt(this.deviceData.flash_bytes, 10) : null));
+
+        let pct = 0;
+        let barClass = 'bg-info';
+
+        if (flashUsed !== null && flashSize > 0) {
+            pct = Math.min(100, Math.max(0, Math.round((flashUsed / flashSize) * 100)));
+        }
+
+        if (pct >= 90) {
+            barClass = 'bg-danger';
+        } else if (pct >= 75) {
+            barClass = 'bg-warning';
+        } else {
+            barClass = 'bg-info';
+        }
+
+        let flashBar = document.getElementById('flash-bar');
+        let flashUsage = document.getElementById('flash-usage');
+        if (!flashBar || !flashUsage) {
+            this.createResourceBarElements();
+            flashBar = document.getElementById('flash-bar');
+            flashUsage = document.getElementById('flash-usage');
+        }
+
+        if (flashBar) {
+            flashBar.style.width = `${pct}%`;
+            flashBar.setAttribute('aria-valuenow', pct);
+            flashBar.className = `progress-bar ${barClass}`;
+        }
+        if (flashUsage) {
+            if (flashUsed !== null) {
+                flashUsage.textContent = `${this.formatBytes(flashUsed)} / ${this.formatBytes(flashSize)} (${pct}%)`;
+            } else {
+                flashUsage.textContent = `${this.formatBytes(flashSize)} total`;
+            }
+        }
+        return { flashUsed, flashSize, pct };
+    }
+
+    drawUsageBars() {
+        return {
+            heap: this.updateHeapBar(),
+            flash: this.updateFlashBar(),
+            rssi: this.updateRssiBar()
+        };
+    }
+
+    createRssiBarElement() {
+        if (typeof document === 'undefined') return null;
+        const signalElement = document.getElementById('wifi-signal');
+        if (!signalElement) return null;
+        const cardBody = signalElement.closest ? signalElement.closest('.card-body') : signalElement.parentElement;
+        if (!cardBody) return null;
+        const progressDiv = document.createElement('div');
+        progressDiv.className = 'progress mt-2';
+        progressDiv.style.height = '6px';
+        progressDiv.innerHTML = '<div id="rssi-bar" class="progress-bar bg-success" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>';
+        cardBody.appendChild(progressDiv);
+        return progressDiv.querySelector ? progressDiv.querySelector('#rssi-bar') : document.getElementById('rssi-bar');
+    }
+
+    createResourceBarElements() {
+        if (typeof document === 'undefined') return;
+        if (document.getElementById('heap-bar') && document.getElementById('flash-bar')) {
+            return;
+        }
+        const statusRow = document.querySelector ? document.querySelector('.row.mb-4') : null;
+        if (!statusRow || !statusRow.parentNode) return;
+        const row = document.createElement('div');
+        row.className = 'row mb-4';
+        row.id = 'system-resources-row';
+        row.innerHTML = `
+            <div class="col-md-6 mb-3">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <div>
+                                <h6 class="card-title text-muted mb-1">Heap Memory</h6>
+                                <h6 id="heap-usage" class="mb-0">Loading...</h6>
+                            </div>
+                            <div class="align-self-center">
+                                <i id="heap-icon" class="bi bi-cpu text-primary fs-2"></i>
+                            </div>
+                        </div>
+                        <div class="progress progress-memory mt-2" style="height: 6px;">
+                            <div id="heap-bar" class="progress-bar progress-bar-memory" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <div>
+                                <h6 class="card-title text-muted mb-1">Flash Storage</h6>
+                                <h6 id="flash-usage" class="mb-0">Loading...</h6>
+                            </div>
+                            <div class="align-self-center">
+                                <i id="flash-icon" class="bi bi-hdd-network text-info fs-2"></i>
+                            </div>
+                        </div>
+                        <div class="progress progress-memory mt-2" style="height: 6px;">
+                            <div id="flash-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        statusRow.parentNode.insertBefore(row, statusRow.nextSibling);
     }
 
     updateAlertStatus() {
@@ -518,6 +732,14 @@ class ESP32ControlPanel {
     }
 
     // Utility Functions
+    formatBytes(bytes) {
+        if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 B';
+        const num = Number(bytes);
+        if (num < 1024) return `${num} B`;
+        if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+        return `${(num / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
     formatUptime(uptimeMs) {
         const seconds = Math.floor(uptimeMs / 1000);
         const hours = Math.floor(seconds / 3600);
@@ -678,6 +900,12 @@ function toggleAutoScroll() {
 }
 
 // Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    controlPanel = new ESP32ControlPanel();
-});
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('DOMContentLoaded', () => {
+        controlPanel = new ESP32ControlPanel();
+    });
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { ESP32ControlPanel };
+}

@@ -66,6 +66,9 @@ void handleStatus() {
   doc["uptime"] = millis();
   doc["wifi_rssi"] = WiFi.RSSI();
   doc["free_heap"] = ESP.getFreeHeap();
+  doc["total_heap"] = ESP.getHeapSize();
+  doc["flash_size"] = ESP.getFlashChipSize();
+  doc["flash_used"] = ESP.getSketchSize();
   doc["wifi_connected"] = WiFi.isConnected();
   doc["wifi_ssid"] = getActiveSSID();
   doc["wifi_network"] = getActiveNetworkRole();
