@@ -2,7 +2,7 @@
 
 An ESP32-based monitoring device with **Home Assistant integration**, modern web interface, live console streaming, smart DNS monitoring, and comprehensive automation tools.
 
-## What's New (v4.0.4)
+## What's New (v5.0.0)
 
 ### 4.0.x - Non-Blocking Architecture, USB CDC & Home Assistant MQTT Integration
 
