@@ -1,0 +1,96 @@
+# Vendored from code/home .github/actions/finalize-uecb-allocation-with-cluster/action.yml
+# (2026-10-17). Re-sync from there; do not fork behavior here.
+name: Finalize UECB allocation with cluster access
+description: >
+  Resolve the in-cluster UECB broker endpoint and finalize an allocation so
+  scheduler capacity is released immediately (success, failure, or cancel).
+
+inputs:
+  allocation_id:
+    description: Broker allocation id from allocate-uecb-runner.
+    required: true
+  result:
+    description: GitHub job result (success, failure, cancelled) or empty.
+    required: false
+    default: ""
+  state:
+    description: Explicit broker terminal state (completed, failed, canceled).
+    required: false
+    default: ""
+  reason:
+    description: Optional human-readable reason.
+    required: false
+    default: ""
+  error:
+    description: Optional error message when finalizing as failed.
+    required: false
+    default: ""
+  failure_class:
+    description: Optional failure class for circuit-breaker accounting.
+    required: false
+    default: ""
+  tailscale_auth_key:
+    description: Tailscale auth key for remote cluster access.
+    required: true
+  kube_ca_cert:
+    description: Base64 encoded Kubernetes CA certificate.
+    required: true
+  kube_token:
+    description: Base64 encoded Kubernetes token.
+    required: true
+
+outputs:
+  allocation_id:
+    description: Broker allocation ID that was finalized.
+    value: ${{ steps.finalize.outputs.allocation_id }}
+  state:
+    description: Terminal state applied (or confirmed) on the allocation.
+    value: ${{ steps.finalize.outputs.state }}
+  http_status:
+    description: HTTP status from the successful complete callback.
+    value: ${{ steps.finalize.outputs.http_status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v5
+      with:
+        version: latest
+
+    - name: Setup Cluster Access
+      id: cluster_access
+      uses: ./.github/actions/setup-cluster-access
+      with:
+        tailscale_auth_key: ${{ inputs.tailscale_auth_key }}
+        kube_ca_cert: ${{ inputs.kube_ca_cert }}
+        kube_token: ${{ inputs.kube_token }}
+
+    - name: Resolve broker endpoint
+      id: broker_endpoint
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "${{ steps.cluster_access.outputs.configured }}" != "true" ]; then
+          echo "No usable kubectl context available for UECB finalization." >&2
+          exit 1
+        fi
+        bash scripts/ci/setup-uecb-broker-endpoint.sh
+
+    - name: Finalize allocation
+      id: finalize
+      uses: ./.github/actions/finalize-uecb-allocation
+      with:
+        broker_url: ${{ steps.broker_endpoint.outputs.broker_url }}
+        allocation_id: ${{ inputs.allocation_id }}
+        result: ${{ inputs.result }}
+        state: ${{ inputs.state }}
+        reason: ${{ inputs.reason }}
+        error: ${{ inputs.error }}
+        failure_class: ${{ inputs.failure_class }}
+
+    - name: Stop broker port-forward
+      if: always()
+      shell: bash
+      run: |
+        bash scripts/ci/setup-uecb-broker-endpoint.sh cleanup

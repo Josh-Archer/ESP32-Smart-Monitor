@@ -27,6 +27,9 @@ pio-help
 ### OTA signing helpers
 - `generate_ota_keys.py` - Create ECDSA P-256 keypair (+ optional AES key)
 - `sign_firmware.py` - Append ECDSA signature (optional AES-CTR encrypt)
+- `package_ota.py` - Frame `firmware.bin` for the 8267 HTTP upload path
+  (real signature when `keys/ota_private.pem` exists, zero-trailer
+  framing for password-only devices; never POST a raw `firmware.bin`)
 
 See [docs/OTA_SIGNING.md](../docs/OTA_SIGNING.md).
 

@@ -1,0 +1,380 @@
+# Vendored from code/home .github/actions/allocate-uecb-runner/action.yml
+# (2026-10-17). Re-sync from there; do not fork behavior here.
+name: Allocate UECB runner
+description: >
+  Allocate an ephemeral runner from the unified broker. Pair with
+  finalize-uecb-allocation (or finalize-uecb-allocation-with-cluster) in an
+  if: always() cleanup job so capacity is released on success, failure, and
+  cancellation.
+
+inputs:
+  broker_url:
+    description: Broker API URL.
+    required: false
+    default: http://unified-ephemeral-runner-broker.arc-systems.svc.cluster.local:8080
+  pool:
+    description: Broker pool to allocate from.
+    required: false
+    default: lite
+  backend:
+    description: Optional backend pin.
+    required: false
+    default: ""
+  labels:
+    description: Comma-separated request labels.
+    required: false
+    default: ""
+  required_capabilities:
+    description: Comma-separated required backend capabilities.
+    required: false
+    default: ""
+  excluded_capabilities:
+    description: Comma-separated backend capabilities to exclude.
+    required: false
+    default: ""
+  job_timeout:
+    description: Requested runner lifetime.
+    required: false
+    default: 15m
+  queue_wait_timeout:
+    description: How long to poll a pending queued allocation before failing.
+    required: false
+    default: 5m
+  allow_tier_policy_skip:
+    description: Treat broker tier-policy blocks as an intentional skip.
+    required: false
+    default: "false"
+
+outputs:
+  allocation_id:
+    description: Broker allocation id.
+    value: ${{ steps.allocate.outputs.allocation_id }}
+  runner_label:
+    description: GitHub runner label to target.
+    value: ${{ steps.allocate.outputs.runner_label }}
+  selected_backend:
+    description: Broker-selected backend.
+    value: ${{ steps.allocate.outputs.selected_backend }}
+  runner_labels_json:
+    description: JSON runs-on label array for the allocated runner.
+    value: ${{ steps.allocate.outputs.runner_labels_json }}
+  skipped_reason:
+    description: Reason allocation was intentionally skipped.
+    value: ${{ steps.allocate.outputs.skipped_reason }}
+  pending_seconds:
+    description: Seconds from allocation request start until the broker returned a runnable allocation.
+    value: ${{ steps.allocate.outputs.pending_seconds }}
+  queue_depth:
+    description: Broker-reported queue depth when present.
+    value: ${{ steps.allocate.outputs.queue_depth }}
+
+runs:
+  using: composite
+  steps:
+    - name: Allocate runner
+      id: allocate
+      shell: bash
+      env:
+        UECB_BROKER_URL: ${{ inputs.broker_url }}
+        UECB_POOL: ${{ inputs.pool }}
+        UECB_BACKEND: ${{ inputs.backend }}
+        UECB_LABELS: ${{ inputs.labels }}
+        UECB_REQUIRED_CAPABILITIES: ${{ inputs.required_capabilities }}
+        UECB_EXCLUDED_CAPABILITIES: ${{ inputs.excluded_capabilities }}
+        UECB_JOB_TIMEOUT: ${{ inputs.job_timeout }}
+        UECB_QUEUE_WAIT_TIMEOUT: ${{ inputs.queue_wait_timeout }}
+        UECB_ALLOW_TIER_POLICY_SKIP: ${{ inputs.allow_tier_policy_skip }}
+      run: |
+        set -euo pipefail
+
+        mint_id_token() {
+          local oidc_response
+          oidc_response="$(curl -fsSL --max-time 30 \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=uecb-broker")"
+          printf '%s' "${oidc_response}" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['value'])"
+        }
+
+        render_allocation_failure() {
+          local resp_file="$1"
+          local status_code="${2:-unknown}"
+          if [ -f "scripts/ci/format_uecb_allocation_error.py" ]; then
+            python3 scripts/ci/format_uecb_allocation_error.py \
+              --response-file "${resp_file}" \
+              --http-status "${status_code}" \
+              --pool "${UECB_POOL:-lite}" \
+              --backend "${UECB_BACKEND:-}" \
+              --append-step-summary || true
+          else
+            cat "${resp_file}" >&2 || true
+          fi
+        }
+
+        assert_matching_backend() {
+          local resp="$1"
+          local current_backend
+          current_backend="$(printf '%s' "${resp}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('selected_backend',''))")"
+          local requested_backend
+          requested_backend="$(python3 -c "import os; print(os.environ.get('UECB_BACKEND', '').strip())")"
+
+          if [ -n "${requested_backend}" ] && [ "${requested_backend}" != "auto" ] && [ -n "${current_backend}" ] && [ "${current_backend}" != "${requested_backend}" ]; then
+            echo "Broker allocated backend '${current_backend}' which does not match requested backend pin '${requested_backend}'. Refusing mismatched allocation." >&2
+            local current_id
+            current_id="$(printf '%s' "${resp}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('allocation_id',''))")"
+            if [ -n "${current_id}" ]; then
+              local cancel_token
+              cancel_token="$(mint_id_token)"
+              curl -sS --max-time 15 -X POST \
+                -H "Authorization: Bearer ${cancel_token}" \
+                -H "Content-Type: application/json" \
+                -d "{\"state\":\"canceled\",\"reason\":\"backend_mismatch\",\"error\":\"Broker allocated backend ${current_backend} which does not match requested backend pin ${requested_backend}\"}" \
+                "${UECB_BROKER_URL}/v1/allocations/${current_id}/complete" >/dev/null 2>&1 || true
+            fi
+            render_allocation_failure "${response_file}" "backend_mismatch"
+            exit 1
+          fi
+        }
+
+        request_body="$(python3 - <<'PY'
+        import json
+        import os
+
+        def csv(name):
+            return [item.strip() for item in os.environ.get(name, "").split(",") if item.strip()]
+
+        body = {
+            "pool": os.environ["UECB_POOL"],
+            "job_timeout": os.environ["UECB_JOB_TIMEOUT"],
+        }
+        backend = os.environ.get("UECB_BACKEND", "").strip()
+        if backend and backend != "auto":
+            body["backend"] = backend
+        labels = csv("UECB_LABELS")
+        if labels:
+            body["labels"] = labels
+        required = csv("UECB_REQUIRED_CAPABILITIES")
+        if required:
+            body["required_capabilities"] = required
+        excluded = csv("UECB_EXCLUDED_CAPABILITIES")
+        if excluded:
+            body["excluded_capabilities"] = excluded
+        print(json.dumps(body, separators=(",", ":")))
+        PY
+        )"
+
+        echo "request_body=${request_body}"
+        allocation_started_at="$(date +%s)"
+        capacity_retry_count=0
+        response_file="$(mktemp)"
+        allocation_deadline=$((SECONDS + 1800))
+        queue_wait_seconds="$(python3 - <<'PY'
+        import os
+        import re
+
+        value = os.environ.get("UECB_QUEUE_WAIT_TIMEOUT", "5m").strip()
+        match = re.fullmatch(r"(\d+)([smh]?)", value)
+        if not match:
+            raise SystemExit(f"invalid queue_wait_timeout {value!r}")
+        amount = int(match.group(1))
+        unit = match.group(2) or "s"
+        multiplier = {"s": 1, "m": 60, "h": 3600}[unit]
+        total = amount * multiplier
+        if total >= 600:
+            total = total - 60
+        print(total)
+        PY
+        )"
+        queue_deadline=$((allocation_started_at + queue_wait_seconds))
+        while true; do
+          id_token="$(mint_id_token)"
+          http_status="$(curl -sS --max-time 30 -o "${response_file}" -w '%{http_code}' \
+            -H "Authorization: Bearer ${id_token}" \
+            -H "Content-Type: application/json" \
+            -d "${request_body}" \
+            "${UECB_BROKER_URL}/v1/allocations")"
+          if [ "${http_status}" -ge 200 ] && [ "${http_status}" -lt 300 ]; then
+            break
+          fi
+
+          if [ "${http_status}" = "400" ] &&
+             grep -Eiq "context deadline exceeded|Client\\.Timeout exceeded|i/o timeout|request canceled" "${response_file}" &&
+            [ "${SECONDS}" -lt "${allocation_deadline}" ]; then
+            capacity_retry_count=$((capacity_retry_count + 1))
+            echo "UECB backend dispatch is temporarily unavailable; retrying allocation in 30s..."
+            sleep 30
+            continue
+          fi
+
+          if [ "${http_status}" = "400" ] &&
+             grep -Eiq "no healthy backend with free capacity|capacity_exhausted" "${response_file}" &&
+            [ "$(date +%s)" -lt "${queue_deadline}" ]; then
+            capacity_retry_count=$((capacity_retry_count + 1))
+            echo "UECB backend capacity is unavailable; retrying allocation in 30s within queue_wait_timeout=${UECB_QUEUE_WAIT_TIMEOUT}..."
+            sleep 30
+            continue
+          fi
+
+          if [ "${http_status}" = "400" ] &&
+             [ "${UECB_ALLOW_TIER_POLICY_SKIP}" = "true" ] &&
+             grep -Eiq "tier policy.*blocked|blocked by tier policy" "${response_file}"; then
+            echo "Broker allocation skipped by backend tier policy."
+            cat "${response_file}" || true
+            {
+              echo "skipped_reason=tier-policy"
+              echo "selected_backend=${UECB_BACKEND}"
+              echo "runner_labels_json=[]"
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "Broker allocation failed with HTTP ${http_status}" >&2
+          render_allocation_failure "${response_file}" "${http_status}"
+          exit 1
+        done
+        response="$(cat "${response_file}")"
+        assert_matching_backend "${response}"
+
+        # Preserve ownership for finalizers even if the queued allocation times
+        # out or registration fails. Never expose labels before it is runnable.
+        allocation_id="$(printf '%s' "${response}" | python3 -c "import json,sys; print(json.load(sys.stdin)['allocation_id'])")"
+        echo "allocation_id=${allocation_id}" >> "${GITHUB_OUTPUT}"
+
+        should_poll_allocation() {
+          RESPONSE_JSON="${response}" python3 - <<'PY'
+        import json
+        import os
+
+        payload = json.loads(os.environ["RESPONSE_JSON"])
+        state = payload.get("state", "")
+        runner_label = payload.get("runner_label", "")
+        if state == "pending" or (state in ("", "ready", "reserved") and not runner_label):
+            print("true")
+        else:
+            print("false")
+        PY
+        }
+
+        while [ "$(should_poll_allocation)" = "true" ]; do
+          now="$(date +%s)"
+          if [ "${now}" -ge "${queue_deadline}" ]; then
+            pending_seconds=$((now - allocation_started_at))
+            echo "::error title=UECB allocation queue wait exceeded::pending_seconds=${pending_seconds} queue_wait_timeout=${UECB_QUEUE_WAIT_TIMEOUT} capacity_retries=${capacity_retry_count}" >&2
+            echo "Timed out waiting for queued allocation to become ready." >&2
+            render_allocation_failure "${response_file}" "queue_timeout"
+            exit 1
+          fi
+
+          allocation_id="$(printf '%s' "${response}" | python3 -c "import json,sys; print(json.load(sys.stdin)['allocation_id'])")"
+          allocation_state="$(printf '%s' "${response}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))")"
+          retry_after="$(RESPONSE_JSON="${response}" python3 - <<'PY'
+        import datetime
+        import json
+        import os
+
+        payload = json.loads(os.environ["RESPONSE_JSON"])
+        value = payload.get("retry_after")
+        if not value:
+            print(5)
+            raise SystemExit
+        normalized = value.replace("Z", "+00:00")
+        if "." in normalized:
+            prefix, suffix = normalized.split(".", 1)
+            digits = []
+            while suffix and suffix[0].isdigit():
+                digits.append(suffix[0])
+                suffix = suffix[1:]
+            fraction = "".join(digits)[:6].ljust(6, "0")
+            normalized = f"{prefix}.{fraction}{suffix}"
+        retry_at = datetime.datetime.fromisoformat(normalized)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        seconds = int((retry_at - now).total_seconds())
+        print(max(1, min(seconds, 30)))
+        PY
+        )"
+
+          echo "Allocation ${allocation_id} state=${allocation_state} is not runnable yet; polling again in ${retry_after}s."
+          sleep "${retry_after}"
+          id_token="$(mint_id_token)"
+          response="$(curl -fsSL --max-time 30 \
+            -H "Authorization: Bearer ${id_token}" \
+            "${UECB_BROKER_URL}/v1/allocations/${allocation_id}")"
+          printf '%s' "${response}" > "${response_file}"
+          assert_matching_backend "${response}"
+        done
+
+        state="$(printf '%s' "${response}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))")"
+        if [ "${state}" != "ready" ] && [ "${state}" != "reserved" ]; then
+          echo "Allocation did not become ready or reserved. Final state: ${state}" >&2
+          render_allocation_failure "${response_file}" "${state}"
+          exit 1
+        fi
+        runner_label="$(printf '%s' "${response}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('runner_label',''))")"
+        if [ -z "${runner_label}" ]; then
+          echo "Allocation did not return a runner label. Final state: ${state}" >&2
+          render_allocation_failure "${response_file}" "missing_label"
+          exit 1
+        fi
+        assert_matching_backend "${response}"
+        selected_backend="$(printf '%s' "${response}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('selected_backend',''))")"
+        if [ -z "${selected_backend}" ]; then
+          echo "Allocation did not return selected_backend. Final state: ${state}" >&2
+          render_allocation_failure "${response_file}" "missing_backend"
+          exit 1
+        fi
+
+        RESPONSE_JSON="${response}" \
+        ALLOCATION_STARTED_AT="${allocation_started_at}" \
+        CAPACITY_RETRY_COUNT="${capacity_retry_count}" \
+        python3 - "${GITHUB_OUTPUT}" <<'PY'
+        import json
+        import os
+        import sys
+        import time
+
+        response = json.loads(os.environ["RESPONSE_JSON"])
+        runner_label = response.get("runner_label", "")
+        selected_backend = response.get("selected_backend", "")
+        pending_seconds = max(0, int(time.time()) - int(os.environ["ALLOCATION_STARTED_AT"]))
+        capacity_retry_count = os.environ["CAPACITY_RETRY_COUNT"]
+        queue_depth = response.get("queue_depth", "")
+        if queue_depth == "" and isinstance(response.get("queue"), dict):
+            queue_depth = response["queue"].get("depth", "")
+        queue_depth = "" if queue_depth is None else str(queue_depth)
+        if not runner_label:
+            raise SystemExit(f"allocation {response.get('allocation_id', '<unknown>')} did not return runner_label")
+        if not selected_backend:
+            raise SystemExit(f"allocation {response.get('allocation_id', '<unknown>')} did not return selected_backend")
+        if selected_backend == "arc":
+            runner_labels = [runner_label]
+        elif selected_backend == "desktop":
+            runner_labels = ["self-hosted", "windows", "x64", runner_label]
+        else:
+            runner_labels = ["self-hosted", "linux", "x64", runner_label]
+
+        with open(sys.argv[1], "a", encoding="utf-8") as output:
+            print(f"allocation_id={response['allocation_id']}", file=output)
+            print(f"runner_label={runner_label}", file=output)
+            print(f"selected_backend={selected_backend}", file=output)
+            print(f"runner_labels_json={json.dumps(runner_labels, separators=(',', ':'))}", file=output)
+            print(f"pending_seconds={pending_seconds}", file=output)
+            print(f"queue_depth={queue_depth}", file=output)
+
+        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary_path:
+            with open(summary_path, "a", encoding="utf-8") as summary:
+                print("### UECB allocation status", file=summary)
+                print("", file=summary)
+                print(f"- allocation_id: `{response['allocation_id']}`", file=summary)
+                print(f"- selected_backend: `{selected_backend}`", file=summary)
+                print(f"- pending_seconds: `{pending_seconds}`", file=summary)
+                print(f"- queue_depth: `{queue_depth or 'not reported'}`", file=summary)
+                print(f"- capacity_retries: `{capacity_retry_count}`", file=summary)
+        print(
+            "::notice title=UECB allocation status::"
+            f"selected_backend={selected_backend} "
+            f"pending_seconds={pending_seconds} "
+            f"queue_depth={queue_depth or 'not-reported'} "
+            f"capacity_retries={capacity_retry_count}"
+        )
+        PY

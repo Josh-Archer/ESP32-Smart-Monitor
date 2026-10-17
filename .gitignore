@@ -72,6 +72,7 @@ docs/_build/
 __pycache__/
 *.py[cod]
 *$py.class
+.venv/
 
 # Node.js (if using any Node.js tools)
 node_modules/

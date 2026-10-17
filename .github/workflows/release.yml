@@ -1,0 +1,89 @@
+name: ESP32 Firmware Release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: n-vr/setup-platformio-action@v1
+      - name: Create dummy credentials
+        run: |
+          cat <<'EOF' > src/credentials.h
+          #pragma once
+          extern const char* WIFI_SSID;
+          extern const char* WIFI_PASSWORD;
+          extern const char* WIFI_SSID_SECONDARY;
+          extern const char* WIFI_PASSWORD_SECONDARY;
+          extern const char* OTA_PASSWORD;
+          extern const char* PUSHOVER_TOKEN;
+          extern const char* PUSHOVER_USER;
+          extern const char* MQTT_USER;
+          extern const char* MQTT_PASSWORD;
+          EOF
+          cat <<'EOF' > src/credentials.cpp
+          #include "credentials.h"
+          const char* WIFI_SSID = "";
+          const char* WIFI_PASSWORD = "";
+          const char* WIFI_SSID_SECONDARY = "";
+          const char* WIFI_PASSWORD_SECONDARY = "";
+          const char* OTA_PASSWORD = "";
+          const char* PUSHOVER_TOKEN = "";
+          const char* PUSHOVER_USER = "";
+          const char* MQTT_USER = "";
+          const char* MQTT_PASSWORD = "";
+          EOF
+      - name: Run test suites
+        run: |
+          python3 test_network_metrics.py
+          python3 test_ota_notifications.py
+          python3 test_ota_packaging.py
+          python3 test_versioning_fix.py
+      - name: Build release firmware
+        run: |
+          pio run --environment esp32-c3-devkitm-1
+          pio run --environment esp32-c3-devkitm-1-webserver
+          pio run --environment esp32-c3-devkitm-1-both
+          cp .pio/build/esp32-c3-devkitm-1/firmware.bin poop-monitor-mqtt-${{ github.ref_name }}.bin
+          cp .pio/build/esp32-c3-devkitm-1-webserver/firmware.bin poop-monitor-webserver-${{ github.ref_name }}.bin
+          cp .pio/build/esp32-c3-devkitm-1-both/firmware.bin poop-monitor-both-${{ github.ref_name }}.bin
+      - name: Extract release notes from CHANGES.md
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES_FILE="release-notes-${GITHUB_REF_NAME}.md"
+          awk -v ver="$VERSION" '
+            $0 == "## " ver {capture=1; next}
+            capture && /^## / {exit}
+            capture && /^---$/ {exit}
+            capture {print}
+          ' CHANGES.md | sed -e :a -e '/./,$!d' > "$NOTES_FILE" || true
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "No CHANGES.md entry for $VERSION; falling back to generated notes."
+            echo "USE_GENERATED_NOTES=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ARGS=(--title "poop-monitor ${{ github.ref_name }}")
+          if [ "${{ steps.notes.outputs.USE_GENERATED_NOTES }}" = "true" ]; then
+            ARGS+=(--generate-notes)
+          else
+            ARGS+=(--notes-file "${{ steps.notes.outputs.notes_file }}")
+          fi
+          gh release create "${{ github.ref_name }}" \
+            "poop-monitor-mqtt-${{ github.ref_name }}.bin" \
+            "poop-monitor-webserver-${{ github.ref_name }}.bin" \
+            "poop-monitor-both-${{ github.ref_name }}.bin" \
+            "${ARGS[@]}"

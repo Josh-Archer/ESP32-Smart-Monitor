@@ -1,0 +1,151 @@
+name: OTA Deploy
+# Flash poop-monitor over the air from an ephemeral UECB runner.
+# Same broker + tailscale pattern as the homelab repos (vendored actions
+# under .github/actions, re-sync from code/home when they change).
+#
+# Uses the HTTP :8267 upload path (upload_http_ota.sh), never espota:
+# espota needs the device to TCP-connect BACK to the runner, which fails
+# from ephemeral/other-network runners. The HTTP path is plain outbound.
+#
+# Required repo secrets:
+#   GHA_RUNNER_TAILSCALE_AUTH_KEY  ephemeral tailscale auth key (broker access)
+#   HOMELAB_CA_CERT                base64 k8s CA cert (broker access)
+#   HOMELAB_SYNC_TOKEN_B64         base64 k8s token (broker access)
+#   OTA_PASSWORD                   device OTA password (X-OTA-Password)
+#   GHA_OTA_TAILSCALE_AUTH_KEY     ephemeral tailscale auth key for the OTA
+#                                  runner to reach the LAN (can be the same
+#                                  value as GHA_RUNNER_TAILSCALE_AUTH_KEY)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: Firmware configuration to build and flash
+        required: false
+        type: choice
+        options:
+          - mqtt
+          - webserver
+          - both
+        default: mqtt
+      ota_host:
+        description: Device hostname or LAN IP (mDNS rarely works over tailnet; prefer a DHCP-reserved IP)
+        required: false
+        type: string
+        default: poop-monitor.local
+      ref:
+        description: Git ref to build (default branch when empty)
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ota-deploy
+  cancel-in-progress: false
+
+jobs:
+  allocate:
+    runs-on: ubuntu-latest
+    outputs:
+      allocation_id: ${{ steps.allocate.outputs.allocation_id }}
+      runner_label: ${{ steps.allocate.outputs.runner_label }}
+      selected_backend: ${{ steps.allocate.outputs.selected_backend }}
+      runner_labels_json: ${{ steps.allocate.outputs.runner_labels_json }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Allocate ephemeral runner
+        id: allocate
+        uses: ./.github/actions/allocate-uecb-runner-with-cluster
+        with:
+          pool: lite
+          labels: ota-deploy
+          job_timeout: 45m
+          queue_wait_timeout: 10m
+          tailscale_auth_key: ${{ secrets.GHA_RUNNER_TAILSCALE_AUTH_KEY }}
+          kube_ca_cert: ${{ secrets.HOMELAB_CA_CERT }}
+          kube_token: ${{ secrets.HOMELAB_SYNC_TOKEN_B64 }}
+
+      - name: Wait for runner label
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ steps.allocate.outputs.runner_label }}
+        run: |
+          set -euo pipefail
+          echo "Allocated ${{ steps.allocate.outputs.selected_backend }} runner ${RUNNER_LABEL}."
+          for attempt in $(seq 1 60); do
+            if GH_TOKEN="${{ github.token }}" gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runners?per_page=100" \
+              --jq "[.runners[] | select(.labels[].name == \"${RUNNER_LABEL}\" and .status == \"online\")] | length" \
+              | grep -q -v '^0$'; then
+              echo "Runner label ${RUNNER_LABEL} is online."
+              exit 0
+            fi
+            echo "Waiting for ${RUNNER_LABEL} (${attempt}/60)."
+            sleep 5
+          done
+          echo "Runner label ${RUNNER_LABEL} did not come online." >&2
+          exit 1
+
+  ota:
+    needs: allocate
+    runs-on: ${{ fromJSON(needs.allocate.outputs.runner_labels_json) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PlatformIO
+        shell: bash
+        run: pip install platformio
+
+      - name: Join tailnet for LAN access
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.GHA_OTA_TAILSCALE_AUTH_KEY }}
+          tags: tag:ci-ota
+
+      - name: Accept LAN subnet routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          (sudo tailscale set --accept-routes=true --accept-dns=false || tailscale set --accept-routes=true --accept-dns=false)
+          (sudo tailscale status || tailscale status)
+
+      - name: Flash via HTTP OTA
+        shell: bash
+        env:
+          OTA_HOST: ${{ inputs.ota_host }}
+          OTA_PASSWORD: ${{ secrets.OTA_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OTA_PASSWORD}" ]; then
+            echo "::error::OTA_PASSWORD secret is not set" >&2
+            exit 1
+          fi
+          ./upload_http_ota.sh "${{ inputs.build_type }}"
+
+  finalize:
+    name: Finalize allocation
+    needs: [allocate, ota]
+    if: always() && needs.allocate.result == 'success' && needs.allocate.outputs.allocation_id != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Finalize allocation
+        uses: ./.github/actions/finalize-uecb-allocation-with-cluster
+        with:
+          allocation_id: ${{ needs.allocate.outputs.allocation_id }}
+          result: ${{ needs.ota.result }}
+          tailscale_auth_key: ${{ secrets.GHA_RUNNER_TAILSCALE_AUTH_KEY }}
+          kube_ca_cert: ${{ secrets.HOMELAB_CA_CERT }}
+          kube_token: ${{ secrets.HOMELAB_SYNC_TOKEN_B64 }}

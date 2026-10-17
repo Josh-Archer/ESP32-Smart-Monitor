@@ -1,0 +1,117 @@
+# Vendored from code/home .github/actions/allocate-uecb-runner-with-cluster/action.yml
+# (2026-10-17). Re-sync from there; do not fork behavior here.
+name: Allocate UECB runner with cluster access
+description: Resolve the in-cluster UECB broker endpoint and allocate an ephemeral runner.
+
+inputs:
+  pool:
+    description: Broker pool to allocate from.
+    required: false
+    default: cloud-lite
+  backend:
+    description: Optional backend pin.
+    required: false
+    default: ""
+  labels:
+    description: Comma-separated request labels.
+    required: false
+    default: ""
+  required_capabilities:
+    description: Comma-separated required backend capabilities.
+    required: false
+    default: ""
+  excluded_capabilities:
+    description: Comma-separated backend capabilities to exclude.
+    required: false
+    default: ""
+  job_timeout:
+    description: Requested runner lifetime.
+    required: false
+    default: 15m
+  queue_wait_timeout:
+    description: How long to poll a pending queued allocation before failing.
+    required: false
+    default: 5m
+  allow_tier_policy_skip:
+    description: Treat broker tier-policy blocks as an intentional skip.
+    required: false
+    default: "false"
+  tailscale_auth_key:
+    description: Tailscale auth key for remote cluster access.
+    required: true
+  kube_ca_cert:
+    description: Base64 encoded Kubernetes CA certificate.
+    required: true
+  kube_token:
+    description: Base64 encoded Kubernetes token.
+    required: true
+
+outputs:
+  allocation_id:
+    description: Broker allocation id.
+    value: ${{ steps.allocate.outputs.allocation_id }}
+  runner_label:
+    description: GitHub runner label to target.
+    value: ${{ steps.allocate.outputs.runner_label }}
+  selected_backend:
+    description: Broker-selected backend.
+    value: ${{ steps.allocate.outputs.selected_backend }}
+  runner_labels_json:
+    description: JSON runs-on label array for the allocated runner.
+    value: ${{ steps.allocate.outputs.runner_labels_json }}
+  skipped_reason:
+    description: Reason allocation was intentionally skipped.
+    value: ${{ steps.allocate.outputs.skipped_reason }}
+  pending_seconds:
+    description: Seconds from allocation request start until the broker returned a runnable allocation.
+    value: ${{ steps.allocate.outputs.pending_seconds }}
+  queue_depth:
+    description: Broker-reported queue depth when present.
+    value: ${{ steps.allocate.outputs.queue_depth }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v5
+      with:
+        version: latest
+
+    - name: Setup Cluster Access
+      id: cluster_access
+      uses: ./.github/actions/setup-cluster-access
+      with:
+        tailscale_auth_key: ${{ inputs.tailscale_auth_key }}
+        kube_ca_cert: ${{ inputs.kube_ca_cert }}
+        kube_token: ${{ inputs.kube_token }}
+
+    - name: Resolve broker endpoint
+      id: broker_endpoint
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "${{ steps.cluster_access.outputs.configured }}" != "true" ]; then
+          echo "::error title=UECB cluster access missing::No usable kubectl context for UECB allocation. Check HOMELAB_CA_CERT, HOMELAB_SYNC_TOKEN_B64, and GHA_RUNNER_TAILSCALE_AUTH_KEY; confirm Tailscale can reach homelab0:6443. Failing immediately instead of waiting for a runner label." >&2
+          exit 1
+        fi
+        bash scripts/ci/setup-uecb-broker-endpoint.sh
+
+    - name: Allocate runner
+      id: allocate
+      uses: ./.github/actions/allocate-uecb-runner
+      with:
+        broker_url: ${{ steps.broker_endpoint.outputs.broker_url }}
+        pool: ${{ inputs.pool }}
+        backend: ${{ inputs.backend }}
+        labels: ${{ inputs.labels }}
+        required_capabilities: ${{ inputs.required_capabilities }}
+        excluded_capabilities: ${{ inputs.excluded_capabilities }}
+        job_timeout: ${{ inputs.job_timeout }}
+        queue_wait_timeout: ${{ inputs.queue_wait_timeout }}
+        allow_tier_policy_skip: ${{ inputs.allow_tier_policy_skip }}
+
+    - name: Stop broker port-forward
+      if: always()
+      shell: bash
+      run: |
+        bash scripts/ci/setup-uecb-broker-endpoint.sh cleanup

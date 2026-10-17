@@ -4,6 +4,13 @@ An ESP32-based monitoring device with **Home Assistant integration**, modern web
 
 ## What's New (v5.0.0)
 
+### 5.0.0 - QR Onboarding, Usage Bars & OTA Notifications
+
+- **📷 QR Setup Page** - New Wi-Fi and Home Assistant onboarding page (`web/setup.html`) with firmware support baked in at build time
+- **📊 Heap, Flash & RSSI Bars** - Visual resource usage bars in the web UI
+- **🔔 OTA Notifications** - Pushover alerts when an OTA upload is received and when it finishes
+- **🌐 HTTP OTA Upload** - `./upload_http_ota.sh` flashes via `http://poop-monitor.local:8267/update`; works from sandboxed/NATed networks where espota fails. See [CHANGES.md](CHANGES.md) for the full v5 rundown
+
 ### 4.0.x - Non-Blocking Architecture, USB CDC & Home Assistant MQTT Integration
 
 - **⚡ Sub-Millisecond Loop Latency** - Completely eliminated blocking delays (`delay(5000)`, etc.) from the main loop and replaced them with non-blocking `millis()` timers. Subsystems (Web server, Telnet, OTA, MQTT) are never starved.
@@ -378,6 +385,34 @@ Load the scripts in your PowerShell session:
 ./upload_and_monitor.sh webserver # WebServer-only build
 ./upload_and_monitor.sh both     # Full feature build
 ./upload_and_monitor.sh serial   # MQTT-only with serial upload
+```
+
+#### `upload_http_ota.sh` - HTTP OTA Deployment (Recommended)
+
+Builds firmware and uploads it via the signed-HTTP OTA endpoint
+(`http://poop-monitor.local:8267/update`) instead of espota. Use this
+whenever espota fails with "No response from device" — espota needs the
+device to open a TCP connection back to your machine, which breaks from
+sandboxed or NATed networks. The script frames the image correctly
+(signed when `keys/ota_private.pem` exists, unsigned framing for
+password-only devices), uploads it, waits for the reboot, and reports
+the before/after firmware version.
+
+```bash
+./upload_http_ota.sh             # MQTT-only build (default)
+./upload_http_ota.sh both        # Full feature build
+OTA_HOST=192.168.1.50 ./upload_http_ota.sh mqtt
+```
+
+**Secrets are never committed.** The OTA password lives in the
+`OTA_PASSWORD` environment variable locally and in the `OTA_PASSWORD`
+repo secret for CI (`platformio.ini` references it via
+`${sysenv.OTA_PASSWORD}`). WiFi/MQTT/Pushover secrets live in the
+gitignored `src/credentials.cpp` (copy from `credentials.template.cpp`).
+Set them once per shell:
+
+```bash
+export OTA_PASSWORD='your-ota-password'
 ```
 
 ## Building and Deploying

@@ -1,5 +1,28 @@
 # Recent Changes Summary
 
+## 5.0.0
+
+**Major release: QR Wi-Fi onboarding, heap/flash/RSSI bars, OTA notifications**
+
+Covers everything since the v4.0.0 tag (including the v4.0.1–v4.0.4 fixes).
+
+**New in 5.0.0:**
+
+- **📷 QR Setup Page for Wi-Fi and Home Assistant** (#51) - New onboarding page (`web/setup.html`, `web/setup.js`, vendored `web/vendor/qrcode.js`) plus firmware support (`src/setup_qr.*`, baked in via `scripts/embed_setup_page.py`)
+- **📊 Heap, Flash & RSSI Bars** (#50) - Visual usage bars in the web UI (`web/app.js`)
+- **🔔 OTA Upload Notifications** (#49) - Pushover alerts when an OTA upload is received and when it finishes; covered by `tests/test_ota_host.cpp` and `test_ota_notifications.py`
+- **🌐 HTTP OTA Upload Path** (port 8267) - Plain-POST firmware upload that works from sandboxed/NATed networks where espota's connect-back fails; `scripts/package_ota.py` frames the image, `./upload_http_ota.sh` automates build + upload + version check
+
+**Carried forward from v4.0.1–v4.0.4 (never tagged, first released here):**
+
+- **⚡ Non-Blocking Main Loop** (#48, fixes #45) - `delay()` calls replaced with `millis()` timers; boot Wi-Fi delay no longer triggers false OTA rollbacks
+- **📶 Wi-Fi Fields in /status** (#44, #47) - `wifi_ssid`, `wifi_network`, `wifi_secondary_configured` in the status API and MQTT
+- **🔌 USB CDC on Boot** - `-DARDUINO_USB_CDC_ON_BOOT=1` / `-DARDUINO_USB_MODE=1` for USB serial console and flashing
+- **🤫 Heartbeat Throttling** - 30s heartbeat interval with failure-log de-duplication
+- **💀 MQTT Dead-Man Watcher + HA Guide** - LWT availability topic, 5-minute offline alerting automations, `docs/HOME_ASSISTANT.md`
+
+---
+
 ## Signed / Encrypted OTA Updates (#29)
 
 - ECDSA P-256 signature verification before OTA apply (`src/ota_crypto.*`, `src/ota_manager.*`)

@@ -96,6 +96,7 @@ jobs:
         run: |
           python3 test_network_metrics.py
           python3 test_ota_notifications.py
+          python3 test_ota_packaging.py
           python3 test_versioning_fix.py
       - name: Get main branch memory usage (for comparison)
         if: github.event_name == 'pull_request'
@@ -378,7 +379,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add src/config.cpp README.md
+          git add src/config.cpp README.md CHANGES.md
           
           if git commit -m "Automatic version update to v${{ steps.smart_version.outputs.version }}"; then
             echo "version_committed=true" >> $GITHUB_OUTPUT
