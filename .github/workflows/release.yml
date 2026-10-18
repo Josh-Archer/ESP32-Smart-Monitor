@@ -50,12 +50,15 @@ jobs:
           python3 test_versioning_fix.py
       - name: Build release firmware
         run: |
+          # Copy each artifact immediately: a later `pio run -e` must never
+          # be able to disturb an earlier environment's build output.
           pio run --environment esp32-c3-devkitm-1
-          pio run --environment esp32-c3-devkitm-1-webserver
-          pio run --environment esp32-c3-devkitm-1-both
           cp .pio/build/esp32-c3-devkitm-1/firmware.bin poop-monitor-mqtt-${{ github.ref_name }}.bin
+          pio run --environment esp32-c3-devkitm-1-webserver
           cp .pio/build/esp32-c3-devkitm-1-webserver/firmware.bin poop-monitor-webserver-${{ github.ref_name }}.bin
+          pio run --environment esp32-c3-devkitm-1-both
           cp .pio/build/esp32-c3-devkitm-1-both/firmware.bin poop-monitor-both-${{ github.ref_name }}.bin
+          ls -l poop-monitor-*.bin
       - name: Extract release notes from CHANGES.md
         id: notes
         run: |
