@@ -108,10 +108,12 @@ jobs:
         run: pip install platformio
 
       - name: Join tailnet for LAN access
+        # Key must be created reusable + ephemeral in the Tailscale admin
+        # console (Settings -> Keys) with a tag granting the LAN subnet
+        # routes (e.g. tag:ci-ota) and 192.168.225.0/24 access.
         uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.GHA_OTA_TAILSCALE_AUTH_KEY }}
-          tags: tag:ci-ota
 
       - name: Accept LAN subnet routes
         shell: bash
