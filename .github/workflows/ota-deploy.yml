@@ -86,29 +86,12 @@ jobs:
           kube_ca_cert: ${{ secrets.HOMELAB_CA_CERT }}
           kube_token: ${{ secrets.HOMELAB_SYNC_TOKEN_B64 }}
 
-      - name: Wait for runner label
-        shell: bash
-        env:
-          RUNNER_LABEL: ${{ steps.allocate.outputs.runner_label }}
-        run: |
-          set -euo pipefail
-          echo "Allocated ${{ steps.allocate.outputs.selected_backend }} runner ${RUNNER_LABEL}."
-          for attempt in $(seq 1 60); do
-            if GH_TOKEN="${{ github.token }}" gh api \
-              "repos/${GITHUB_REPOSITORY}/actions/runners?per_page=100" \
-              --jq "[.runners[] | select(.labels[].name == \"${RUNNER_LABEL}\" and .status == \"online\")] | length" \
-              | grep -q -v '^0$'; then
-              echo "Runner label ${RUNNER_LABEL} is online."
-              exit 0
-            fi
-            echo "Waiting for ${RUNNER_LABEL} (${attempt}/60)."
-            sleep 5
-          done
-          echo "Runner label ${RUNNER_LABEL} did not come online." >&2
-          exit 1
-
   ota:
     needs: allocate
+    # No explicit wait: the broker only returns runnable allocations, so
+    # GitHub schedules this as soon as the runner registers. Bounded below
+    # in case it never does.
+    timeout-minutes: 50
     runs-on: ${{ fromJSON(needs.allocate.outputs.runner_labels_json) }}
     steps:
       - uses: actions/checkout@v4
