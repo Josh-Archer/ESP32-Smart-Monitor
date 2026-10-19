@@ -56,6 +56,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  actions: read
 
 concurrency:
   group: ota-deploy
@@ -146,7 +147,10 @@ jobs:
   finalize:
     name: Finalize allocation
     needs: [allocate, ota]
-    if: always() && needs.allocate.result == 'success' && needs.allocate.outputs.allocation_id != ''
+    # Mirror the home pattern: release the lease whenever one was issued,
+    # even if allocate itself failed after the broker handed out an id.
+    # Broker orphan expiry reclaims anything this misses.
+    if: always() && needs.allocate.outputs.allocation_id != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
