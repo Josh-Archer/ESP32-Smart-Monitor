@@ -55,8 +55,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  actions: read
 
 concurrency:
   group: ota-deploy
@@ -65,13 +63,17 @@ concurrency:
 jobs:
   allocate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write # OIDC auth to the UECB broker
     outputs:
       allocation_id: ${{ steps.allocate.outputs.allocation_id }}
       runner_label: ${{ steps.allocate.outputs.runner_label }}
       selected_backend: ${{ steps.allocate.outputs.selected_backend }}
       runner_labels_json: ${{ steps.allocate.outputs.runner_labels_json }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Allocate ephemeral runner
         id: allocate
@@ -94,11 +96,11 @@ jobs:
     timeout-minutes: 50
     runs-on: ${{ fromJSON(needs.allocate.outputs.runner_labels_json) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
@@ -135,8 +137,12 @@ jobs:
     # Broker orphan expiry reclaims anything this misses.
     if: always() && needs.allocate.outputs.allocation_id != ''
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write # OIDC auth to the UECB broker
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Finalize allocation
         uses: ./.github/actions/finalize-uecb-allocation-with-cluster
