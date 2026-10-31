@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-firmware:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'uecb-shared' }}
     permissions:
       contents: read
       pull-requests: write
@@ -354,7 +354,7 @@ jobs:
     # Only push events may write to the repo (version commit + tag).
     if: github.event_name == 'push'
     needs: build-firmware
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'uecb-shared' }}
     permissions:
       contents: write
     steps:
