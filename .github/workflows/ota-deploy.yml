@@ -1,14 +1,23 @@
 name: OTA Deploy
-# Flash poop-monitor over the air from the shared UECB runner pool
-# (runs-on: uecb-shared): an in-cluster pod that routes to the ESP32 LAN
-# directly (probed: pod -> 192.168.225.160, 0% loss). mDNS does not resolve
-# from a pod, so pass the device LAN IP (DHCP-reserve it).
+# Flash poop-monitor over the air from an ephemeral UECB runner.
+# Same broker + tailscale pattern as the homelab repos (vendored actions
+# under .github/actions, re-sync from code/home when they change).
 #
 # Uses the HTTP :8267 upload path (upload_http_ota.sh), never espota:
 # espota needs the device to TCP-connect BACK to the runner, which fails
-# from ephemeral runners. The HTTP path is plain outbound.
+# from ephemeral/other-network runners. The HTTP path is plain outbound.
+#
+# The OTA job itself needs NO tailnet: it runs on an in-cluster ARC
+# runner (backend pinned below), and pods route to the ESP32 LAN
+# directly (probed: pod -> 192.168.225.160, 0% loss). mDNS does NOT
+# resolve from a pod, so pass the device LAN IP (DHCP-reserve it).
+# Tailscale is still required for the allocate/finalize jobs, which
+# reach the ClusterIP-only broker from ubuntu-latest via port-forward.
 #
 # Required repo secrets:
+#   GHA_RUNNER_TAILSCALE_AUTH_KEY  ephemeral tailscale auth key (broker access)
+#   HOMELAB_CA_CERT                base64 k8s CA cert (broker access)
+#   HOMELAB_SYNC_TOKEN_B64         base64 k8s token (broker access)
 #   OTA_PASSWORD                   device OTA password (X-OTA-Password)
 
 on:
@@ -28,6 +37,16 @@ on:
         required: false
         type: string
         default: 192.168.225.160
+      backend:
+        description: UECB backend pin (arc = in-cluster runner with direct LAN route)
+        required: false
+        type: string
+        default: arc
+      pool:
+        description: Broker pool to allocate from
+        required: false
+        type: string
+        default: lite
       ref:
         description: Git ref to build (default branch when empty)
         required: false
@@ -42,9 +61,40 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  allocate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write # OIDC auth to the UECB broker
+    outputs:
+      allocation_id: ${{ steps.allocate.outputs.allocation_id }}
+      runner_label: ${{ steps.allocate.outputs.runner_label }}
+      selected_backend: ${{ steps.allocate.outputs.selected_backend }}
+      runner_labels_json: ${{ steps.allocate.outputs.runner_labels_json }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Allocate ephemeral runner
+        id: allocate
+        uses: ./.github/actions/allocate-uecb-runner-with-cluster
+        with:
+          pool: ${{ inputs.pool }}
+          backend: ${{ inputs.backend }}
+          labels: ota-deploy
+          job_timeout: 45m
+          queue_wait_timeout: 10m
+          tailscale_auth_key: ${{ secrets.GHA_RUNNER_TAILSCALE_AUTH_KEY }}
+          kube_ca_cert: ${{ secrets.HOMELAB_CA_CERT }}
+          kube_token: ${{ secrets.HOMELAB_SYNC_TOKEN_B64 }}
+
   ota:
+    needs: allocate
+    # No explicit wait: the broker only returns runnable allocations, so
+    # GitHub schedules this as soon as the runner registers. Bounded below
+    # in case it never does.
     timeout-minutes: 50
-    runs-on: uecb-shared
+    runs-on: ${{ fromJSON(needs.allocate.outputs.runner_labels_json) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -79,3 +129,26 @@ jobs:
           fi
           ./upload_http_ota.sh "${{ inputs.build_type }}"
 
+  finalize:
+    name: Finalize allocation
+    needs: [allocate, ota]
+    # Mirror the home pattern: release the lease whenever one was issued,
+    # even if allocate itself failed after the broker handed out an id.
+    # Broker orphan expiry reclaims anything this misses.
+    if: always() && needs.allocate.outputs.allocation_id != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write # OIDC auth to the UECB broker
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Finalize allocation
+        uses: ./.github/actions/finalize-uecb-allocation-with-cluster
+        with:
+          allocation_id: ${{ needs.allocate.outputs.allocation_id }}
+          result: ${{ needs.ota.result }}
+          tailscale_auth_key: ${{ secrets.GHA_RUNNER_TAILSCALE_AUTH_KEY }}
+          kube_ca_cert: ${{ secrets.HOMELAB_CA_CERT }}
+          kube_token: ${{ secrets.HOMELAB_SYNC_TOKEN_B64 }}
