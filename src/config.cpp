@@ -21,7 +21,10 @@ const char* otaPassword = OTA_PASSWORD;
 const char* deviceName = "poop-monitor";
 
 // DNS Configuration
-IPAddress primaryDNS(192, 168, 68, 94);    // Active network DNS server
+// AdGuard's floating address on the Homelab VLAN. It does not belong to a
+// node, so it stays the same when nodes move (Josh-Archer/home#4399). It was
+// 192.168.68.94, a node's own address, which went away on 2026-11-16.
+IPAddress primaryDNS(172, 16, 20, 53);     // Active network DNS server
 IPAddress fallbackDNS(1, 1, 1, 1);         // Public fallback DNS (Cloudflare)
 
 // Pushover Configuration (from credentials.h)
