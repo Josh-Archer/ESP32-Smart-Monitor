@@ -15,7 +15,9 @@ inputs:
   cluster_server:
     description: "Cluster API Server URL"
     required: false
-    default: "https://192.168.68.94:6443"
+    # The node's Tailscale address, as in code/home. Its LAN address
+    # (192.168.68.94) went away on 2026-11-16 (Josh-Archer/home#4399).
+    default: "https://100.68.151.94:6443"
   tailscale_cluster_peer:
     description: "Tailscale peer hostname to use as a fallback Kubernetes API endpoint"
     required: false

@@ -373,9 +373,25 @@ Load the scripts in your PowerShell session:
 #### `reboot_esp32.sh` - Remote Device Reboot
 
 ```bash
-./reboot_esp32.sh           # Interactive reboot with confirmation
-./reboot_esp32.sh --force   # Force reboot without confirmation
+./reboot_esp32.sh                  # Interactive reboot with confirmation
+./reboot_esp32.sh --force          # Reboot without confirmation
+./reboot_esp32.sh --method http    # Use the web server's /reboot instead of MQTT
+./reboot_esp32.sh --no-wait        # Send the command and exit
 ```
+
+By default the script reboots over MQTT: it publishes to
+`homeassistant/poop_monitor/command/reboot` and then watches the availability
+topic for `offline` followed by `online`. That works on every build, including
+the MQTT-only one, which has no web server, and from anywhere that can reach
+the broker. The broker comes from `MQTT_HOST`/`MQTT_PORT` or `src/config.cpp`,
+the login from `MQTT_USER`/`MQTT_PASSWORD` or `src/credentials.*`; the password
+is passed in a private options file, never on a command line. It needs
+`mosquitto_pub` and `mosquitto_sub` (package `mosquitto-clients`). Exit code 0
+means the device went down and came back, 1 that the command could not be
+sent, 2 that it was sent but the device was not seen coming back.
+
+A reboot does not change the DNS servers: they are set in `src/config.cpp`
+(`primaryDNS`, `fallbackDNS`) and need a firmware update.
 
 #### `upload_and_monitor.sh` - All-in-One Deployment
 
