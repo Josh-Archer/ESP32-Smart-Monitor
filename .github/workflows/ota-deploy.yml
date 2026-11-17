@@ -108,13 +108,21 @@ jobs:
         shell: bash
         run: pip install platformio
 
+      # Over TCP on the OTA port, not ping: the home gateway allows runners on
+      # the Homelab VLAN only TCP 8267 to this device (Josh-Archer/home#4399),
+      # so ICMP is dropped. Any HTTP status proves the route and the OTA server.
       - name: Prove LAN route to device
         shell: bash
         env:
           OTA_HOST: ${{ inputs.ota_host }}
         run: |
           set -euo pipefail
-          ping -c 3 -W 3 "$OTA_HOST"
+          code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://$OTA_HOST:8267/update" || true)"
+          if [ -z "$code" ] || [ "$code" = "000" ]; then
+            echo "::error::no route to $OTA_HOST:8267" >&2
+            exit 1
+          fi
+          echo "OTA server answered HTTP $code"
 
       - name: Flash via HTTP OTA
         shell: bash
