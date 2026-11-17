@@ -135,7 +135,7 @@ PACKAGE=".pio/build/$ENVIRONMENT/firmware.ota.bin"
 
 # Step 0: record the running version for the before/after check
 print_status $CYAN "Current device version:"
-OLD_VERSION="$(curl -s -m 10 "telnet://$OTA_HOST:23" 2>/dev/null | tr -d '\r' | grep -Eo 'Version: [^ |]+' | head -1 | awk '{print $2}')"
+OLD_VERSION="$(curl -s -m 10 "telnet://$OTA_HOST:23" </dev/null 2>/dev/null | tr -d '\r' | grep -Eo 'Version: [^ |]+' | head -1 | awk '{print $2}')"
 if [ -z "$OLD_VERSION" ]; then
     OLD_VERSION="$(curl -s -m 10 "http://$OTA_HOST/status" 2>/dev/null | grep -Eo '"version":"[^"]+"' | head -1 | cut -d'"' -f4)"
 fi
@@ -196,6 +196,13 @@ case "$HTTP_CODE" in
         print_status $RED "✗ Upload rejected (403): device enforces signatures — provision keys and sign the image"
         exit 1
         ;;
+    000)
+        # The device writes the image and restarts before it answers, so the
+        # connection drops with no HTTP status (#57). Whether the flash took
+        # is decided below by the device coming back.
+        print_status $YELLOW "… No HTTP response — the device usually restarts before answering. Checking that it comes back."
+        NO_RESPONSE=1
+        ;;
     *)
         print_status $RED "✗ Upload failed (HTTP $HTTP_CODE): $DEVICE_MSG"
         exit 1
@@ -206,20 +213,33 @@ esac
 print_status $YELLOW "Waiting for device to reboot..."
 sleep 20
 for i in $(seq 1 10); do
-    NEW_VERSION="$(curl -s -m 10 "telnet://$OTA_HOST:23" 2>/dev/null | tr -d '\r' | grep -Eo 'Version: [^ |]+' | head -1 | awk '{print $2}')"
+    NEW_VERSION="$(curl -s -m 10 "telnet://$OTA_HOST:23" </dev/null 2>/dev/null | tr -d '\r' | grep -Eo 'Version: [^ |]+' | head -1 | awk '{print $2}')"
     if [ -z "$NEW_VERSION" ]; then
         NEW_VERSION="$(curl -s -m 10 "http://$OTA_HOST/status" 2>/dev/null | grep -Eo '"version":"[^"]+"' | head -1 | cut -d'"' -f4)"
     fi
     if [ -n "$NEW_VERSION" ]; then
         break
     fi
+    # MQTT-only builds have no telnet or HTTP status endpoint: count the OTA
+    # server answering again (any HTTP status) as the device being back.
+    OTA_STATUS="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$OTA_HOST:$OTA_PORT/" 2>/dev/null || true)"
+    if [ -n "$OTA_STATUS" ] && [ "$OTA_STATUS" != "000" ]; then
+        DEVICE_BACK=1
+        break
+    fi
     print_status $YELLOW "  device not answering yet (attempt $i/10)..."
     sleep 10
 done
 
-if [ -z "$NEW_VERSION" ]; then
+if [ -z "$NEW_VERSION" ] && [ -z "${DEVICE_BACK:-}" ]; then
     print_status $RED "✗ Device did not come back online after reboot — check power/network"
     exit 1
+fi
+if [ -z "$NEW_VERSION" ]; then
+    print_banner "HTTP OTA Upload Complete!"
+    echo -e "${GREEN}The device restarted and its OTA server answers again.${NC}"
+    echo -e "${YELLOW}Version not verified: this build has no telnet or HTTP status endpoint. Check the 'firmware' MQTT topic.${NC}"
+    exit 0
 fi
 
 print_banner "HTTP OTA Upload Complete!"

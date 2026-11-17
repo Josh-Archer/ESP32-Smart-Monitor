@@ -63,6 +63,7 @@ jobs:
           python3 test_ota_notifications.py
           python3 test_ota_packaging.py
           python3 test_reboot_script.py
+          python3 test_upload_script.py
           python3 test_versioning_fix.py
       - name: Build release firmware
         run: |
