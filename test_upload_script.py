@@ -82,14 +82,16 @@ class UploadScriptResultTest(unittest.TestCase):
         os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
 
     def run_script(self, upload_code, device_back):
-        env = {
+        # Inherit the environment: setup-python on CI needs LD_LIBRARY_PATH.
+        env = dict(os.environ)
+        env.update({
             "PATH": self.bin + os.pathsep + os.environ["PATH"],
             "HOME": self.tmp.name,
             "OTA_HOST": "192.0.2.10",
             "OTA_PASSWORD": "placeholder",
             "FAKE_UPLOAD_CODE": upload_code,
             "FAKE_DEVICE_BACK": "1" if device_back else "",
-        }
+        })
         return subprocess.run(
             ["bash", "upload_http_ota.sh", "mqtt"],
             cwd=self.work, capture_output=True, text=True, env=env, timeout=120,
