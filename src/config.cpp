@@ -7,7 +7,7 @@
 #endif
 #endif
 
-const char* firmwareVersion = "5.0.0";
+const char* firmwareVersion = "5.1.0";
 
 // WiFi Configuration (from credentials.h)
 const char* ssid = WIFI_SSID;
